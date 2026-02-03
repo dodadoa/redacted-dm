@@ -2,22 +2,21 @@
   position: fixed;
   top: 20px;
   right: 20px;
-  background: rgba(20, 20, 20, 0.95);
-  border: 2px solid #f3e5ab;
-  border-radius: 8px;
+  background: #ffffff;
+  border-radius: 16px;
   padding: 20px;
   z-index: 999999;
   min-width: 300px;
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3), 0 4px 16px rgba(0, 0, 0, 0.3);
   font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-  color: #f3e5ab;
+  color: #000000;
 }
 
 .drum-machine-overlay h3 {
   margin: 0 0 15px 0;
   font-size: 18px;
   text-transform: uppercase;
-  color: #f3e5ab;
+  color: #000000;
 }
 
 .drum-machine-controls {
@@ -35,7 +34,7 @@
 .control-group label {
   font-size: 12px;
   text-transform: uppercase;
-  color: #cccccc;
+  color: #000000;
 }
 
 .control-row {
@@ -47,30 +46,36 @@
 .drum-machine-button {
   padding: 8px 16px;
   background: transparent;
-  border: 1px solid #f3e5ab;
-  border-radius: 4px;
-  color: #f3e5ab;
+  border-radius: 8px;
+  border: none;
+  color: #000000;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.12), 0 1px 2px rgba(0, 0, 0, 0.15);
   cursor: pointer;
   font-size: 14px;
   transition: all 0.2s;
 }
 
 .drum-machine-button:hover {
-  background: rgba(243, 229, 171, 0.1);
+  background: rgba(0, 0, 0, 0.1);
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.12), 0 1px 2px rgba(0, 0, 0, 0.15);
 }
 
 .drum-machine-button:active {
-  background: rgba(243, 229, 171, 0.2);
+  background: rgba(0, 0, 0, 0.2);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.06);
 }
 
 .drum-machine-button.playing {
-  background: #f3e5ab;
-  color: #141414;
+  background: #000000;
+  color: #ffffff;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.12), 0 1px 2px rgba(0, 0, 0, 0.15);
 }
 
 .drum-machine-button:disabled {
   opacity: 0.5;
   cursor: not-allowed;
+  color: #303030;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.12), 0 1px 2px rgba(0, 0, 0, 0.15);
 }
 
 .redact-mode-btn {
@@ -78,47 +83,50 @@
 }
 
 .redact-mode-btn.active {
-  background: #f3e5ab;
-  color: #141414;
+  background: #000000;
+  color: #ffffff;
 }
 
 .bpm-input {
   width: 80px;
   padding: 6px;
-  background: rgba(255, 255, 255, 0.1);
-  border: 1px solid #f3e5ab;
-  border-radius: 4px;
-  color: #f3e5ab;
+  background: #ffffff;
+  border-radius: 6px;
+  color: #000000;
   font-size: 14px;
+  border: none;
 }
 
 .bpm-input:focus {
   outline: none;
-  border-color: #f3e5ab;
-  background: rgba(255, 255, 255, 0.15);
+  background: #ffffff;
+  box-shadow: 0 0 0 2px rgba(0, 0, 0, 0.1);
 }
 
 .status-text {
   font-size: 12px;
-  color: #cccccc;
+  color: #000000;
   margin-top: 5px;
+  opacity: 0.7;
 }
 
 .rectangle-selector {
   position: fixed;
-  border: 2px dashed #f3e5ab;
-  background: rgba(243, 229, 171, 0.1);
+  border: 2px dashed #000000;
+  background: rgba(0, 0, 0, 0.1);
   pointer-events: none;
   z-index: 999998;
+  border-radius: 4px;
 }
 
 .area-border-overlay {
-  position: fixed;
-  border: 2px solid #f3e5ab;
+  position: absolute;
+  border: 2px solid #000000;
   pointer-events: none;
   z-index: 999997;
   box-sizing: border-box;
   background: transparent;
+  border-radius: 4px;
 }
 
 .current-text-border {
@@ -147,13 +155,65 @@
   box-shadow: 0 0 4px rgba(243, 229, 171, 0.5) !important;
 }
 
+/* Ensure links inside redacted text are completely black */
+.highlighted-text a,
+.highlighted-text a:link,
+.highlighted-text a:visited,
+.highlighted-text a:hover,
+.highlighted-text a:active,
+.highlighted-text a:focus {
+  color: #000000 !important;
+  text-decoration: none !important;
+  background-color: transparent !important;
+  border-bottom: none !important;
+  border: none !important;
+  outline: none !important;
+  text-decoration-line: none !important;
+  text-decoration-style: none !important;
+  text-decoration-color: transparent !important;
+  -webkit-text-decoration-line: none !important;
+  -webkit-text-decoration-style: none !important;
+  -webkit-text-decoration-color: transparent !important;
+  text-underline-offset: 0 !important;
+  text-decoration-thickness: 0 !important;
+  -webkit-text-decoration-skip: none !important;
+  text-decoration-skip-ink: none !important;
+}
+
+/* Ensure any nested elements are also black */
+.highlighted-text * {
+  color: #000000 !important;
+  text-decoration: none !important;
+}
+
+.highlighted-text *:link,
+.highlighted-text *:visited,
+.highlighted-text *:hover,
+.highlighted-text *:active,
+.highlighted-text *:focus {
+  color: #000000 !important;
+  text-decoration: none !important;
+  border-bottom: none !important;
+  border: none !important;
+  outline: none !important;
+  text-decoration-line: none !important;
+  text-underline-offset: 0 !important;
+  text-decoration-thickness: 0 !important;
+}
+
+/* Disable pointer events on links inside redacted text to prevent clicking */
+.highlighted-text a {
+  pointer-events: none !important;
+  cursor: default !important;
+}
+
 .close-button {
   position: absolute;
   top: 10px;
   right: 10px;
   background: transparent;
   border: none;
-  color: #f3e5ab;
+  color: #000000;
   cursor: pointer;
   font-size: 20px;
   width: 24px;
@@ -162,16 +222,20 @@
   align-items: center;
   justify-content: center;
   padding: 0;
+  border-radius: 4px;
+  transition: all 0.2s;
 }
 
 .close-button:hover {
-  color: #ffffff;
+  background: rgba(0, 0, 0, 0.1);
+  color: #000000;
 }
 
 .info-text {
   font-size: 11px;
-  color: #999;
+  color: #000000;
   margin-top: 10px;
   line-height: 1.4;
+  opacity: 0.6;
 }
 

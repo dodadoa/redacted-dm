@@ -18,12 +18,6 @@ export default defineManifest({
     default_popup: 'popup.html',
     default_icon: 'img/logo-48.png',
   },
-  options_page: 'options.html',
-  devtools_page: 'devtools.html',
-  background: {
-    service_worker: 'src/background/index.js',
-    type: 'module',
-  },
   content_scripts: [
     {
       matches: ['http://*/*', 'https://*/*'],
@@ -39,6 +33,6 @@ export default defineManifest({
       matches: [],
     },
   ],
-  permissions: ['sidePanel', 'storage'],
+  permissions: ['sidePanel', 'storage', 'tabs', 'scripting'],
   chrome_url_overrides: {},
 })

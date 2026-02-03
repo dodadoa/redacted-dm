@@ -5,11 +5,13 @@ console.info('contentScript is running')
 class DrumMachine {
   constructor() {
     this.isSelecting = false
-    this.selectedArea = null
+    this.selectedAreas = [] // Array of selected areas
     this.highlightedWords = []
-    this.allTextElements = [] // All text elements in the selected area
+    this.allTextElements = [] // All text elements in the selected areas
+    this.areaTextElements = [] // Text elements separated by area
     this.isPlaying = false
     this.currentStep = 0
+    this.areaSteps = [] // Current step for each area
     this.bpm = 120
     this.intervalId = null
     this.audioContext = null
@@ -18,8 +20,8 @@ class DrumMachine {
     this.stepInterval = null
     this.highlightModeEnabled = false
     this.redactMode = 'free' // 'word' or 'free'
-    this.areaBorderOverlay = null
-    this.currentTextBorder = null
+    this.areaBorderOverlays = [] // Array of border overlays
+    this.currentTextBorders = [] // Array of current text borders (one per area)
     
     this.init()
   }
@@ -42,8 +44,11 @@ class DrumMachine {
       <div class="drum-machine-controls">
         <div class="control-group">
           <label>Area Selection</label>
-          <button class="drum-machine-button" id="select-area-btn">Select Area</button>
-          <div class="status-text" id="area-status">No area selected</div>
+          <div class="control-row">
+            <button class="drum-machine-button" id="select-area-btn">Select Area</button>
+            <button class="drum-machine-button" id="clear-areas-btn">Clear All</button>
+          </div>
+          <div class="status-text" id="area-status">No areas selected</div>
         </div>
         <div class="control-group">
           <label>Redact Mode</label>
@@ -87,6 +92,9 @@ class DrumMachine {
     
     // Make overlay draggable
     this.makeDraggable(overlay)
+    
+    // Hide overlay by default
+    overlay.style.display = 'none'
   }
 
   makeDraggable(element) {
@@ -218,13 +226,17 @@ class DrumMachine {
   setupEventListeners() {
     // Close button
     document.getElementById('drum-machine-close').addEventListener('click', () => {
-      this.stop()
-      document.getElementById('drum-machine-overlay').remove()
+      this.hideOverlay()
     })
 
     // Select area button
     document.getElementById('select-area-btn').addEventListener('click', () => {
       this.startAreaSelection()
+    })
+
+    // Clear areas button
+    document.getElementById('clear-areas-btn').addEventListener('click', () => {
+      this.clearAllAreas()
     })
 
     // Highlight toggle button
@@ -343,19 +355,55 @@ class DrumMachine {
       const onMouseUp = (e) => {
         e.preventDefault() // Prevent text selection
         const rect = selector.getBoundingClientRect()
-        this.selectedArea = {
-          x: rect.left,
-          y: rect.top,
-          width: rect.width,
-          height: rect.height
+        
+        // Find the element that contains this area
+        const elementAtCenter = document.elementFromPoint(
+          rect.left + rect.width / 2,
+          rect.top + rect.height / 2
+        )
+        
+        // Find a suitable parent element to anchor to
+        let anchorElement = elementAtCenter
+        if (anchorElement) {
+          // Walk up the DOM tree to find a good anchor (not body/html)
+          while (anchorElement && 
+                 (anchorElement === document.body || 
+                  anchorElement === document.documentElement ||
+                  anchorElement.tagName === 'BODY' ||
+                  anchorElement.tagName === 'HTML')) {
+            anchorElement = anchorElement.parentElement
+          }
         }
+        
+        // If no suitable element found, use body
+        if (!anchorElement) {
+          anchorElement = document.body
+        }
+        
+        // Get the bounding rect of the anchor element
+        const anchorRect = anchorElement.getBoundingClientRect()
+        
+        // Calculate position relative to anchor element
+        // Use viewport coordinates and convert to relative coordinates
+        const areaData = {
+          x: rect.left - anchorRect.left,
+          y: rect.top - anchorRect.top,
+          width: rect.width,
+          height: rect.height,
+          anchorElement: anchorElement,
+          viewportX: rect.left,
+          viewportY: rect.top
+        }
+
+        // Add to selected areas array
+        this.selectedAreas.push(areaData)
 
         selector.style.display = 'none'
         this.isSelecting = false
         btn.textContent = 'Select Area'
         btn.disabled = false
         document.getElementById('area-status').textContent = 
-          `Area selected: ${Math.round(rect.width)}×${Math.round(rect.height)}px`
+          `${this.selectedAreas.length} area${this.selectedAreas.length !== 1 ? 's' : ''} selected`
 
         // Restore text selection
         document.body.style.userSelect = ''
@@ -370,9 +418,9 @@ class DrumMachine {
         }
 
         // Create border overlay for selected area
-        this.createAreaBorder()
+        this.createAreaBorder(areaData)
         
-        // Extract all text elements from the selected area
+        // Extract all text elements from the selected areas
         this.extractAllTextElements()
 
         document.removeEventListener('mousemove', onMouseMove)
@@ -390,11 +438,11 @@ class DrumMachine {
     this.highlightModeEnabled = !this.highlightModeEnabled
     const btn = document.getElementById('highlight-toggle-btn')
     
-    if (this.highlightModeEnabled) {
+      if (this.highlightModeEnabled) {
       btn.textContent = 'Disable Redact'
       btn.classList.add('playing')
-      if (!this.selectedArea) {
-        alert('Please select an area first!')
+      if (this.selectedAreas.length === 0) {
+        alert('Please select at least one area first!')
         this.highlightModeEnabled = false
         btn.textContent = 'Enable Redact'
         btn.classList.remove('playing')
@@ -425,90 +473,111 @@ class DrumMachine {
     }
   }
 
-  createAreaBorder() {
-    // Remove existing border if any
-    if (this.areaBorderOverlay) {
-      this.areaBorderOverlay.remove()
-    }
+  clearAllAreas() {
+    // Remove all border overlays
+    this.areaBorderOverlays.forEach(overlay => {
+      if (overlay && overlay.parentNode) {
+        overlay.parentNode.removeChild(overlay)
+      }
+    })
+    this.areaBorderOverlays = []
+    
+    // Clear selected areas
+    this.selectedAreas = []
+    
+    // Update UI
+    document.getElementById('area-status').textContent = 'No areas selected'
+    
+    // Clear text elements
+    this.allTextElements = []
+  }
 
-    if (!this.selectedArea) return
+  createAreaBorder(areaData) {
+    if (!areaData) return
 
-    // Create border overlay
+    // Create border overlay anchored to the element
     const border = document.createElement('div')
-    border.id = 'area-border-overlay'
     border.className = 'area-border-overlay'
     
-    // Store original coordinates relative to viewport
-    const updateBorder = () => {
-      if (!this.selectedArea) return
-      border.style.left = this.selectedArea.x + 'px'
-      border.style.top = this.selectedArea.y + 'px'
-      border.style.width = this.selectedArea.width + 'px'
-      border.style.height = this.selectedArea.height + 'px'
+    // Position relative to anchor element
+    const anchorElement = areaData.anchorElement || document.body
+    const anchorRect = anchorElement.getBoundingClientRect()
+    
+    // Set position relative to anchor element
+    border.style.position = 'absolute'
+    border.style.left = areaData.x + 'px'
+    border.style.top = areaData.y + 'px'
+    border.style.width = areaData.width + 'px'
+    border.style.height = areaData.height + 'px'
+    border.style.border = '2px solid #f3e5ab'
+    border.style.pointerEvents = 'none'
+    border.style.zIndex = '999997'
+    border.style.boxSizing = 'border-box'
+    border.style.background = 'transparent'
+    
+    // Ensure anchor element has relative positioning
+    const computedStyle = window.getComputedStyle(anchorElement)
+    if (computedStyle.position === 'static') {
+      anchorElement.style.position = 'relative'
     }
     
-    updateBorder()
-    document.body.appendChild(border)
-    this.areaBorderOverlay = border
-
-    // Update border on scroll (viewport coordinates don't change, but we keep it for safety)
-    const updateBorderPosition = () => {
-      if (this.areaBorderOverlay && this.selectedArea) {
-        updateBorder()
-      }
-    }
-
-    window.addEventListener('scroll', updateBorderPosition, { passive: true })
-    window.addEventListener('resize', updateBorderPosition, { passive: true })
+    // Append to anchor element
+    anchorElement.appendChild(border)
+    this.areaBorderOverlays.push(border)
+    
+    // Border will move with anchor element automatically since it's positioned relative to it
+    // The coordinates are stored relative to the anchor element's viewport position
+    // So they will automatically stay in the correct position when scrolling
   }
 
   extractAllTextElements() {
-    if (!this.selectedArea) return
+    if (this.selectedAreas.length === 0) return
 
     this.allTextElements = []
-    
-    // Get all elements that intersect with the selected area
-    const allElements = document.elementsFromPoint(
-      this.selectedArea.x + this.selectedArea.width / 2,
-      this.selectedArea.y + this.selectedArea.height / 2
-    )
-
     const textElements = []
     const processedNodes = new Set()
 
-    // Walk through document to find all text nodes in the area
-    const walker = document.createTreeWalker(
-      document.body,
-      NodeFilter.SHOW_TEXT,
-      {
-        acceptNode: (node) => {
-          if (processedNodes.has(node)) {
+    // Process each selected area
+    this.selectedAreas.forEach(selectedArea => {
+      // Walk through document to find all text nodes in this area
+      const walker = document.createTreeWalker(
+        selectedArea.anchorElement || document.body,
+        NodeFilter.SHOW_TEXT,
+        {
+          acceptNode: (node) => {
+            if (processedNodes.has(node)) {
+              return NodeFilter.FILTER_REJECT
+            }
+            
+            const parent = node.parentElement
+            if (!parent) return NodeFilter.FILTER_REJECT
+            
+            // Get position relative to anchor element
+            const anchorRect = selectedArea.anchorElement.getBoundingClientRect()
+            const parentRect = parent.getBoundingClientRect()
+            
+            // Calculate relative position (viewport coordinates to relative)
+            const relativeLeft = parentRect.left - anchorRect.left
+            const relativeTop = parentRect.top - anchorRect.top
+            
+            // Check if element is within or overlaps selected area
+            const isWithinArea = !(
+              (relativeLeft + parentRect.width) < selectedArea.x ||
+              relativeLeft > (selectedArea.x + selectedArea.width) ||
+              (relativeTop + parentRect.height) < selectedArea.y ||
+              relativeTop > (selectedArea.y + selectedArea.height)
+            )
+            
+            if (isWithinArea && node.nodeValue.trim().length > 0) {
+              processedNodes.add(node)
+              return NodeFilter.FILTER_ACCEPT
+            }
+            
             return NodeFilter.FILTER_REJECT
           }
-          
-          const parent = node.parentElement
-          if (!parent) return NodeFilter.FILTER_REJECT
-          
-          const rect = parent.getBoundingClientRect()
-          
-          // Check if element is within or overlaps selected area
-          const isWithinArea = !(
-            rect.right < this.selectedArea.x ||
-            rect.left > this.selectedArea.x + this.selectedArea.width ||
-            rect.bottom < this.selectedArea.y ||
-            rect.top > this.selectedArea.y + this.selectedArea.height
-          )
-          
-          if (isWithinArea && node.nodeValue.trim().length > 0) {
-            processedNodes.add(node)
-            return NodeFilter.FILTER_ACCEPT
-          }
-          
-          return NodeFilter.FILTER_REJECT
-        }
-      },
-      false
-    )
+        },
+        false
+      )
 
     let node
     while (node = walker.nextNode()) {
@@ -532,12 +601,38 @@ class DrumMachine {
           
           const wordRect = wordRange.getBoundingClientRect()
           if (wordRect.width > 0 && wordRect.height > 0) {
-            textElements.push({
-              text: part.trim(),
-              range: wordRange.cloneRange(),
-              element: node.parentElement,
-              isRedacted: false
-            })
+            // Check if word is within any of the selected areas
+            const anchorRect = selectedArea.anchorElement.getBoundingClientRect()
+            const wordRelativeLeft = wordRect.left - anchorRect.left
+            const wordRelativeTop = wordRect.top - anchorRect.top
+            const wordCenterX = wordRelativeLeft + wordRect.width / 2
+            const wordCenterY = wordRelativeTop + wordRect.height / 2
+            
+            // Check if word center is within this selected area
+            const isWithinArea = (
+              wordCenterX >= selectedArea.x &&
+              wordCenterY >= selectedArea.y &&
+              wordCenterX <= selectedArea.x + selectedArea.width &&
+              wordCenterY <= selectedArea.y + selectedArea.height
+            )
+            
+            // Also check if at least part of the word overlaps with the area
+            const overlapsArea = !(
+              (wordRelativeLeft + wordRect.width) < selectedArea.x ||
+              wordRelativeLeft > (selectedArea.x + selectedArea.width) ||
+              (wordRelativeTop + wordRect.height) < selectedArea.y ||
+              wordRelativeTop > (selectedArea.y + selectedArea.height)
+            )
+            
+            // Only include if word is within or significantly overlaps the area
+            if (isWithinArea || (overlapsArea && wordRect.width > 0 && wordRect.height > 0)) {
+              textElements.push({
+                text: part.trim(),
+                range: wordRange.cloneRange(),
+                element: node.parentElement,
+                isRedacted: false
+              })
+            }
           }
           
           offset += part.length
@@ -546,6 +641,7 @@ class DrumMachine {
         }
       })
     }
+    }) // Close forEach(selectedArea)
 
     // Sort by position (top to bottom, left to right)
     textElements.sort((a, b) => {
@@ -694,7 +790,7 @@ class DrumMachine {
   }
 
   handleTextSelection() {
-    if (this.isSelecting || !this.selectedArea || !this.highlightModeEnabled) return
+    if (this.isSelecting || this.selectedAreas.length === 0 || !this.highlightModeEnabled) return
 
     const selection = window.getSelection()
     if (!selection || selection.rangeCount === 0) return
@@ -712,16 +808,25 @@ class DrumMachine {
     // Check if selection is valid
     if (rect.width === 0 && rect.height === 0) return
 
-    // Check if selection overlaps with the selected area
+    // Check if selection overlaps with any of the selected areas
     const selectionCenterX = rect.left + rect.width / 2
     const selectionCenterY = rect.top + rect.height / 2
     
-    if (
-      selectionCenterX >= this.selectedArea.x &&
-      selectionCenterY >= this.selectedArea.y &&
-      selectionCenterX <= this.selectedArea.x + this.selectedArea.width &&
-      selectionCenterY <= this.selectedArea.y + this.selectedArea.height
-    ) {
+    const isInAnyArea = this.selectedAreas.some(selectedArea => {
+      const anchorRect = selectedArea.anchorElement.getBoundingClientRect()
+      // Convert viewport coordinates to relative coordinates
+      const relativeX = selectionCenterX - anchorRect.left
+      const relativeY = selectionCenterY - anchorRect.top
+      
+      return (
+        relativeX >= selectedArea.x &&
+        relativeY >= selectedArea.y &&
+        relativeX <= selectedArea.x + selectedArea.width &&
+        relativeY <= selectedArea.y + selectedArea.height
+      )
+    })
+    
+    if (isInAnyArea) {
       const text = range.toString().trim()
       if (text && text.length > 0) {
         // Clear selection first to avoid conflicts
@@ -1018,7 +1123,7 @@ class DrumMachine {
     this.updateHighlightStatus()
     
     // Re-extract text elements to update redacted status
-    if (this.selectedArea) {
+    if (this.selectedAreas.length > 0) {
       setTimeout(() => {
         this.extractAllTextElements()
       }, 10)
@@ -1041,16 +1146,48 @@ class DrumMachine {
   }
 
   play() {
-    if (!this.selectedArea) {
-      alert('Please select an area first!')
+    if (this.selectedAreas.length === 0) {
+      alert('Please select at least one area first!')
       return
     }
 
     // Re-extract text elements to ensure we have the latest
     this.extractAllTextElements()
 
-    if (this.allTextElements.length === 0) {
-      alert('No text found in the selected area!')
+    // Separate text elements by area
+    this.areaTextElements = []
+    this.areaSteps = []
+    
+    this.selectedAreas.forEach((selectedArea, areaIndex) => {
+      const elementsInThisArea = this.allTextElements.filter(textEl => {
+        try {
+          const rect = textEl.range.getBoundingClientRect()
+          const centerX = rect.left + rect.width / 2
+          const centerY = rect.top + rect.height / 2
+          
+          const anchorRect = selectedArea.anchorElement.getBoundingClientRect()
+          const relativeX = centerX - anchorRect.left
+          const relativeY = centerY - anchorRect.top
+          
+          return (
+            relativeX >= selectedArea.x &&
+            relativeY >= selectedArea.y &&
+            relativeX <= selectedArea.x + selectedArea.width &&
+            relativeY <= selectedArea.y + selectedArea.height
+          )
+        } catch (e) {
+          return false
+        }
+      })
+      
+      this.areaTextElements.push(elementsInThisArea)
+      this.areaSteps.push(0)
+    })
+
+    // Check if any area has text
+    const hasText = this.areaTextElements.some(elements => elements.length > 0)
+    if (!hasText) {
+      alert('No text found in the selected areas! Please select areas with text.')
       return
     }
 
@@ -1066,7 +1203,7 @@ class DrumMachine {
 
     this.stepInterval = setInterval(() => {
       this.playStep()
-      this.currentStep = (this.currentStep + 1) % this.allTextElements.length
+      this.currentStep++
     }, stepDuration)
     
     // Play first step immediately
@@ -1074,71 +1211,116 @@ class DrumMachine {
   }
 
   playStep() {
-    if (this.allTextElements.length === 0) return
+    if (this.areaTextElements.length === 0 || this.selectedAreas.length === 0) return
 
-    const textIndex = this.currentStep % this.allTextElements.length
-    const textEl = this.allTextElements[textIndex]
-
-    // Remove previous border
-    if (this.currentTextBorder) {
-      this.currentTextBorder.remove()
-      this.currentTextBorder = null
-    }
-
-    // Create green border around current text
-    try {
-      const rect = textEl.range.getBoundingClientRect()
-      if (rect.width > 0 && rect.height > 0) {
-        // Remove old border
-        if (this.currentTextBorder) {
-          this.currentTextBorder.remove()
-        }
-        
-        const border = document.createElement('div')
-        border.className = 'current-text-border'
-        border.style.position = 'fixed'
-        border.style.left = rect.left + 'px'
-        border.style.top = rect.top + 'px'
-        border.style.width = rect.width + 'px'
-        border.style.height = rect.height + 'px'
-        
-        document.body.appendChild(border)
-        this.currentTextBorder = border
-
-        // Scroll into view if needed
-        const element = textEl.element
-        if (element && element.scrollIntoView) {
-          element.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'nearest' })
-        }
+    // Remove previous borders
+    this.currentTextBorders.forEach(border => {
+      if (border && border.parentNode) {
+        border.parentNode.removeChild(border)
       }
-    } catch (e) {
-      console.warn('Could not create border for text:', e)
-    }
+    })
+    this.currentTextBorders = []
 
-    // If this text is redacted, play sound
-    if (textEl.isRedacted) {
-      // Find which redacted word this corresponds to
-      const redactedIndex = this.highlightedWords.findIndex(redacted => {
-        const redactedRect = redacted.element.getBoundingClientRect()
-        const textRect = textEl.range.getBoundingClientRect()
-        // Check if they overlap
-        return !(
-          textRect.right < redactedRect.left ||
-          textRect.left > redactedRect.right ||
-          textRect.bottom < redactedRect.top ||
-          textRect.top > redactedRect.bottom
+    // Play step for each area in parallel
+    this.selectedAreas.forEach((selectedArea, areaIndex) => {
+      const textElements = this.areaTextElements[areaIndex]
+      if (!textElements || textElements.length === 0) return
+
+      // Get current step for this area
+      let step = this.areaSteps[areaIndex]
+      const textIndex = step % textElements.length
+      const textEl = textElements[textIndex]
+
+      // Verify this element is still within the selected area
+      try {
+        const rect = textEl.range.getBoundingClientRect()
+        if (rect.width === 0 || rect.height === 0) {
+          // Move to next step for this area
+          this.areaSteps[areaIndex] = (step + 1) % textElements.length
+          return
+        }
+        
+        const centerX = rect.left + rect.width / 2
+        const centerY = rect.top + rect.height / 2
+        
+        // Verify element is within this area's boundaries
+        const anchorRect = selectedArea.anchorElement.getBoundingClientRect()
+        const relativeX = centerX - anchorRect.left
+        const relativeY = centerY - anchorRect.top
+        
+        const isWithinArea = (
+          relativeX >= selectedArea.x &&
+          relativeY >= selectedArea.y &&
+          relativeX <= selectedArea.x + selectedArea.width &&
+          relativeY <= selectedArea.y + selectedArea.height
         )
-      })
-      
-      if (redactedIndex >= 0) {
-        this.playDrumSound(redactedIndex)
+        
+        if (!isWithinArea) {
+          // Element is outside area, move to next step
+          this.areaSteps[areaIndex] = (step + 1) % textElements.length
+          return
+        }
+      } catch (e) {
+        // If we can't verify position, move to next step
+        this.areaSteps[areaIndex] = (step + 1) % textElements.length
+        return
       }
-    }
+
+      // Create green border around current text for this area
+      try {
+        const rect = textEl.range.getBoundingClientRect()
+        if (rect.width > 0 && rect.height > 0) {
+          const border = document.createElement('div')
+          border.className = 'current-text-border'
+          border.style.position = 'fixed'
+          border.style.left = rect.left + 'px'
+          border.style.top = rect.top + 'px'
+          border.style.width = rect.width + 'px'
+          border.style.height = rect.height + 'px'
+          
+          document.body.appendChild(border)
+          this.currentTextBorders.push(border)
+
+          // Scroll into view if needed
+          const element = textEl.element
+          if (element && element.scrollIntoView) {
+            element.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'nearest' })
+          }
+        }
+      } catch (e) {
+        console.warn('Could not create border for text:', e)
+      }
+
+      // If this text is redacted, play sound
+      if (textEl.isRedacted) {
+        // Find which redacted word this corresponds to
+        const redactedIndex = this.highlightedWords.findIndex(redacted => {
+          const redactedRect = redacted.element.getBoundingClientRect()
+          const textRect = textEl.range.getBoundingClientRect()
+          // Check if they overlap
+          return !(
+            textRect.right < redactedRect.left ||
+            textRect.left > redactedRect.right ||
+            textRect.bottom < redactedRect.top ||
+            textRect.top > redactedRect.bottom
+          )
+        })
+        
+        if (redactedIndex >= 0) {
+          // Use area index to vary the sound slightly
+          this.playDrumSound(redactedIndex + areaIndex)
+        }
+      }
+
+      // Advance step for this area
+      this.areaSteps[areaIndex] = (step + 1) % textElements.length
+    })
   }
 
   stop() {
     this.isPlaying = false
     this.currentStep = 0
+    this.areaSteps = this.areaSteps.map(() => 0)
 
     if (this.stepInterval) {
       clearInterval(this.stepInterval)
@@ -1149,16 +1331,50 @@ class DrumMachine {
     document.getElementById('play-btn').classList.remove('playing')
     document.getElementById('stop-btn').disabled = true
 
-    // Remove green border
-    if (this.currentTextBorder) {
-      this.currentTextBorder.remove()
-      this.currentTextBorder = null
-    }
+    // Remove green borders
+    this.currentTextBorders.forEach(border => {
+      if (border && border.parentNode) {
+        border.parentNode.removeChild(border)
+      }
+    })
+    this.currentTextBorders = []
 
     // Remove active class from all highlights
     this.highlightedWords.forEach(word => {
       word.element.classList.remove('active')
     })
+  }
+
+  toggleOverlay(show) {
+    const overlay = document.getElementById('drum-machine-overlay')
+    if (overlay) {
+      overlay.style.display = show ? 'block' : 'none'
+      
+      // Also ensure visibility
+      if (show) {
+        overlay.style.visibility = 'visible'
+        overlay.style.opacity = '1'
+      }
+      
+      // Send state back to popup
+      chrome.runtime.sendMessage({
+        type: 'DRUM_MACHINE_STATE',
+        open: show
+      }).catch(() => {
+        // Ignore errors if popup is closed
+      })
+    } else {
+      console.warn('Drum machine overlay not found!')
+    }
+  }
+
+  showOverlay() {
+    this.toggleOverlay(true)
+  }
+
+  hideOverlay() {
+    this.stop()
+    this.toggleOverlay(false)
   }
 }
 
@@ -1168,8 +1384,48 @@ let drumMachine = null
 function initDrumMachine() {
   if (!drumMachine) {
     drumMachine = new DrumMachine()
+    
+    // Check initial state from storage and show/hide accordingly
+    chrome.storage.local.get(['drumMachineOpen'], function (result) {
+      const isOpen = result.drumMachineOpen || false
+      if (isOpen) {
+        drumMachine.showOverlay()
+      } else {
+        drumMachine.hideOverlay()
+      }
+    })
   }
+  return drumMachine
 }
+
+// Listen for messages from popup
+chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
+  if (request.type === 'TOGGLE_DRUM_MACHINE') {
+    if (!drumMachine) {
+      initDrumMachine()
+    }
+    
+    if (drumMachine) {
+      if (request.open) {
+        drumMachine.showOverlay()
+      } else {
+        drumMachine.hideOverlay()
+      }
+      sendResponse({ success: true })
+    } else {
+      sendResponse({ success: false })
+    }
+    return true // Keep message channel open for async response
+  }
+  
+  // Also listen for state sync requests
+  if (request.type === 'GET_DRUM_MACHINE_STATE') {
+    const overlay = document.getElementById('drum-machine-overlay')
+    const isOpen = overlay && overlay.style.display !== 'none'
+    sendResponse({ open: isOpen })
+    return true
+  }
+})
 
 // Wait for DOM to be ready
 if (document.readyState === 'loading') {
