@@ -1,0 +1,93 @@
+export class AudioEngine {
+  constructor() {
+    this.audioContext = null
+    this.drumSounds = {}
+    this.init()
+  }
+
+  init() {
+    try {
+      this.audioContext = new (window.AudioContext || window.webkitAudioContext)()
+      this.createDrumSounds()
+    } catch (e) {
+      console.error('Audio context initialization failed:', e)
+    }
+  }
+
+  createDrumSounds() {
+    // Create different drum sounds using Web Audio API
+    const drumTypes = ['kick', 'snare', 'hihat', 'openhat', 'crash']
+    
+    drumTypes.forEach((type) => {
+      this.drumSounds[type] = () => {
+        if (!this.audioContext) return
+        
+        const oscillator = this.audioContext.createOscillator()
+        const gainNode = this.audioContext.createGain()
+        
+        oscillator.connect(gainNode)
+        gainNode.connect(this.audioContext.destination)
+        
+        const now = this.audioContext.currentTime
+        
+        switch (type) {
+          case 'kick':
+            oscillator.frequency.setValueAtTime(60, now)
+            oscillator.frequency.exponentialRampToValueAtTime(30, now + 0.1)
+            gainNode.gain.setValueAtTime(1, now)
+            gainNode.gain.exponentialRampToValueAtTime(0.01, now + 0.3)
+            oscillator.type = 'sine'
+            break
+          case 'snare':
+            oscillator.frequency.setValueAtTime(200, now)
+            oscillator.frequency.exponentialRampToValueAtTime(50, now + 0.1)
+            gainNode.gain.setValueAtTime(0.7, now)
+            gainNode.gain.exponentialRampToValueAtTime(0.01, now + 0.2)
+            oscillator.type = 'triangle'
+            break
+          case 'hihat':
+            oscillator.frequency.setValueAtTime(8000, now)
+            oscillator.frequency.exponentialRampToValueAtTime(1000, now + 0.05)
+            gainNode.gain.setValueAtTime(0.3, now)
+            gainNode.gain.exponentialRampToValueAtTime(0.01, now + 0.1)
+            oscillator.type = 'square'
+            break
+          case 'openhat':
+            oscillator.frequency.setValueAtTime(10000, now)
+            oscillator.frequency.exponentialRampToValueAtTime(2000, now + 0.15)
+            gainNode.gain.setValueAtTime(0.4, now)
+            gainNode.gain.exponentialRampToValueAtTime(0.01, now + 0.2)
+            oscillator.type = 'square'
+            break
+          case 'crash':
+            oscillator.frequency.setValueAtTime(12000, now)
+            oscillator.frequency.exponentialRampToValueAtTime(3000, now + 0.3)
+            gainNode.gain.setValueAtTime(0.5, now)
+            gainNode.gain.exponentialRampToValueAtTime(0.01, now + 0.4)
+            oscillator.type = 'sawtooth'
+            break
+        }
+        
+        oscillator.start(now)
+        oscillator.stop(now + 0.5)
+      }
+    })
+  }
+
+  playDrumSound(wordIndex, areaIndex = 0) {
+    if (!this.audioContext) return
+    
+    // Resume audio context if suspended (required by some browsers)
+    if (this.audioContext.state === 'suspended') {
+      this.audioContext.resume()
+    }
+    
+    const drumTypes = Object.keys(this.drumSounds)
+    const drumType = drumTypes[(wordIndex + areaIndex) % drumTypes.length]
+    
+    if (this.drumSounds[drumType]) {
+      this.drumSounds[drumType]()
+    }
+  }
+}
+
