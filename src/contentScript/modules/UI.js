@@ -14,6 +14,26 @@ export class UI {
       <h3>Self-censored<br>Step Sequencer</h3>
       <div class="drum-machine-controls">
         <div class="control-group">
+          <label>Output Mode</label>
+          <div class="control-row">
+            <button class="drum-machine-button redact-mode-btn active" id="mode-browser">Browser</button>
+            <button class="drum-machine-button redact-mode-btn" id="mode-remote">Local Remote</button>
+          </div>
+        </div>
+        <div class="control-group osc-group" id="osc-group" style="display:none;">
+          <label>OSC Bridge (WebSocket)</label>
+          <div class="control-row">
+            <input type="text" class="bpm-input osc-input" id="osc-host" value="127.0.0.1" placeholder="IP">
+            <span class="osc-colon">:</span>
+            <input type="number" class="bpm-input osc-input osc-port" id="osc-port" value="8080" placeholder="Port">
+          </div>
+          <div class="control-row">
+            <button class="drum-machine-button" id="osc-connect-btn">Connect</button>
+            <button class="drum-machine-button" id="osc-disconnect-btn" disabled>Disconnect</button>
+          </div>
+          <div class="status-text" id="osc-status">Not connected</div>
+        </div>
+        <div class="control-group">
           <label>Area Selection</label>
           <div class="control-row">
             <button class="drum-machine-button" id="select-area-btn">Select Area</button>

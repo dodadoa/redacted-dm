@@ -1,7 +1,15 @@
+import { OSCClient } from './OSCClient.js'
+
 export class AudioEngine {
   constructor() {
     this.audioContext = null
     this.drumSounds = {}
+
+    // 'browser' | 'remote'
+    this.mode = 'browser'
+
+    this.oscClient = new OSCClient()
+
     this.init()
   }
 
@@ -14,22 +22,88 @@ export class AudioEngine {
     }
   }
 
+  // ─── Mode ─────────────────────────────────────────────────────────────────
+
+  setMode(mode) {
+    this.mode = mode // 'browser' | 'remote'
+  }
+
+  getMode() {
+    return this.mode
+  }
+
+  // ─── OSC / Remote ─────────────────────────────────────────────────────────
+
+  connectRemote(host, port) {
+    this.oscClient.connect(host, port)
+  }
+
+  disconnectRemote() {
+    this.oscClient.disconnect()
+  }
+
+  setOSCStatusCallback(cb) {
+    this.oscClient.onStatusChange = cb
+  }
+
+  isRemoteConnected() {
+    return this.oscClient.connected
+  }
+
+  // ─── Playback ─────────────────────────────────────────────────────────────
+
+  /**
+   * Called on every sequencer step — sends /redacted-dm/step in remote mode.
+   * In browser mode this is a no-op (browser has no concept of a silent tick).
+   */
+  playStep(areaIndex, stepIndex, isRedacted) {
+    if (this.mode === 'remote') {
+      this.oscClient.sendStep(areaIndex, stepIndex, isRedacted)
+    }
+    // browser mode: visual border already handled by Sequencer; no audio for plain steps
+  }
+
+  /**
+   * Called only when the current step is a redacted phrase.
+   * Browser: plays a synthesised drum sound.
+   * Remote: sends /redacted-dm/trigger OSC message.
+   */
+  playDrumSound(wordIndex, areaIndex = 0) {
+    if (this.mode === 'remote') {
+      this.oscClient.sendTrigger(areaIndex, wordIndex, 1.0)
+      return
+    }
+
+    // Browser mode — Web Audio API
+    if (!this.audioContext) return
+    if (this.audioContext.state === 'suspended') {
+      this.audioContext.resume()
+    }
+
+    const drumTypes = Object.keys(this.drumSounds)
+    const drumType = drumTypes[(wordIndex + areaIndex) % drumTypes.length]
+    if (this.drumSounds[drumType]) {
+      this.drumSounds[drumType]()
+    }
+  }
+
+  // ─── Web Audio sounds ─────────────────────────────────────────────────────
+
   createDrumSounds() {
-    // Create different drum sounds using Web Audio API
     const drumTypes = ['kick', 'snare', 'hihat', 'openhat', 'crash']
-    
+
     drumTypes.forEach((type) => {
       this.drumSounds[type] = () => {
         if (!this.audioContext) return
-        
+
         const oscillator = this.audioContext.createOscillator()
         const gainNode = this.audioContext.createGain()
-        
+
         oscillator.connect(gainNode)
         gainNode.connect(this.audioContext.destination)
-        
+
         const now = this.audioContext.currentTime
-        
+
         switch (type) {
           case 'kick':
             oscillator.frequency.setValueAtTime(60, now)
@@ -67,27 +141,10 @@ export class AudioEngine {
             oscillator.type = 'sawtooth'
             break
         }
-        
+
         oscillator.start(now)
         oscillator.stop(now + 0.5)
       }
     })
   }
-
-  playDrumSound(wordIndex, areaIndex = 0) {
-    if (!this.audioContext) return
-    
-    // Resume audio context if suspended (required by some browsers)
-    if (this.audioContext.state === 'suspended') {
-      this.audioContext.resume()
-    }
-    
-    const drumTypes = Object.keys(this.drumSounds)
-    const drumType = drumTypes[(wordIndex + areaIndex) % drumTypes.length]
-    
-    if (this.drumSounds[drumType]) {
-      this.drumSounds[drumType]()
-    }
-  }
 }
-

@@ -1,4 +1,5 @@
 import { FontLoader } from './FontLoader.js'
+import { CSSInjector } from './CSSInjector.js'
 import { AudioEngine } from './AudioEngine.js'
 import { AreaSelector } from './AreaSelector.js'
 import { TextHighlighter } from './TextHighlighter.js'
@@ -27,6 +28,7 @@ export class DrumMachine {
 
   init() {
     FontLoader.load()
+    CSSInjector.inject()
     this.ui.create()
     this.setupEventListeners()
   }
@@ -113,6 +115,55 @@ export class DrumMachine {
       })
     }
 
+    // Output mode buttons
+    const modeBrowserBtn = document.getElementById('mode-browser')
+    const modeRemoteBtn = document.getElementById('mode-remote')
+    const oscGroup = document.getElementById('osc-group')
+
+    if (modeBrowserBtn) {
+      modeBrowserBtn.addEventListener('click', () => {
+        this.audioEngine.setMode('browser')
+        modeBrowserBtn.classList.add('active')
+        modeRemoteBtn?.classList.remove('active')
+        if (oscGroup) oscGroup.style.display = 'none'
+      })
+    }
+
+    if (modeRemoteBtn) {
+      modeRemoteBtn.addEventListener('click', () => {
+        this.audioEngine.setMode('remote')
+        modeRemoteBtn.classList.add('active')
+        modeBrowserBtn?.classList.remove('active')
+        if (oscGroup) oscGroup.style.display = ''
+      })
+    }
+
+    // OSC connect / disconnect
+    const oscConnectBtn = document.getElementById('osc-connect-btn')
+    const oscDisconnectBtn = document.getElementById('osc-disconnect-btn')
+    const oscStatusEl = document.getElementById('osc-status')
+
+    this.audioEngine.setOSCStatusCallback((connected, message) => {
+      if (oscStatusEl) oscStatusEl.textContent = message
+      if (oscConnectBtn) oscConnectBtn.disabled = connected
+      if (oscDisconnectBtn) oscDisconnectBtn.disabled = !connected
+    })
+
+    if (oscConnectBtn) {
+      oscConnectBtn.addEventListener('click', () => {
+        const host = document.getElementById('osc-host')?.value.trim() || '127.0.0.1'
+        const port = parseInt(document.getElementById('osc-port')?.value) || 8080
+        if (oscStatusEl) oscStatusEl.textContent = `Connecting to ${host}:${port}…`
+        this.audioEngine.connectRemote(host, port)
+      })
+    }
+
+    if (oscDisconnectBtn) {
+      oscDisconnectBtn.addEventListener('click', () => {
+        this.audioEngine.disconnectRemote()
+      })
+    }
+
     // Play/Stop buttons
     const playBtn = document.getElementById('play-btn')
     if (playBtn) {
@@ -186,9 +237,10 @@ export class DrumMachine {
   }
 
   clearAllAreas() {
+    this.stop()
+    this.textHighlighter.clearHighlights()
     this.areaSelector.clearAll()
     this.textExtractor.allTextElements = []
-    this.stop()
   }
 
   extractAllTextElements() {

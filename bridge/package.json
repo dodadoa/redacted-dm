@@ -1,0 +1,14 @@
+{
+  "name": "redacted-dm-bridge",
+  "version": "1.0.0",
+  "description": "WebSocket → UDP OSC bridge for the Redacted Drum Machine Chrome extension",
+  "type": "module",
+  "main": "bridge.js",
+  "scripts": {
+    "start": "node bridge.js"
+  },
+  "dependencies": {
+    "ws": "^8.18.0"
+  }
+}
+

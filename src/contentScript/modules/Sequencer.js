@@ -159,7 +159,10 @@ export class Sequencer {
         console.warn('Could not create border for text:', e)
       }
 
-      // If this text is redacted, play sound
+      // Always notify the audio engine of the step (used for OSC /step in remote mode)
+      this.audioEngine.playStep(areaIndex, step, textEl.isRedacted)
+
+      // If this text is redacted, also fire the trigger sound / OSC message
       if (textEl.isRedacted) {
         // Find which redacted word this corresponds to
         const redactedIndex = highlightedWords.findIndex(redacted => {
@@ -175,7 +178,6 @@ export class Sequencer {
         })
         
         if (redactedIndex >= 0) {
-          // Use area index to vary the sound slightly
           this.audioEngine.playDrumSound(redactedIndex + areaIndex, areaIndex)
         }
       }

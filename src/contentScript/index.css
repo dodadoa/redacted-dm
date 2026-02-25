@@ -2,21 +2,30 @@
   position: fixed;
   top: 20px;
   right: 20px;
-  background: #ffffff;
+  /* background-image injected by FontLoader.js via chrome.runtime.getURL — cannot use relative url() in content script CSS */
   border-radius: 16px;
   padding: 20px;
   z-index: 999999;
   min-width: 300px;
   box-shadow: 0 8px 32px rgba(0, 0, 0, 0.15), 0 4px 16px rgba(0, 0, 0, 0.15);
-  font-family: 'Basteleur', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  font-family: 'Steps Mono', 'Courier New', monospace;
+  font-weight: 300;
   color: #000000;
+  backdrop-filter: blur(5px);
+  z-index: 999999;
 }
 
-.drum-machine-overlay h3 {
+.drum-machine-overlay h1,
+.drum-machinelabel ay h2,
+.drum-machine-overlay h3,
+.drum-machine-overlay h4,
+.drum-machine-overlay h5,
+.drum-machine-overlay h6,
+.drum-machine-overlay label {
   margin: 0 0 15px 0;
   font-size: 18px;
-  text-transform: uppercase;
   color: #000000;
+  font-family: 'Basteleur', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif !important;
 }
 
 .drum-machine-controls {
@@ -33,8 +42,8 @@
 
 .control-group label {
   font-size: 12px;
-  text-transform: uppercase;
   color: #000000;
+  margin-bottom: 0px;
 }
 
 .control-row {
@@ -45,37 +54,55 @@
 
 .drum-machine-button {
   padding: 8px 16px;
-  background: transparent;
+  background: #dfdfdf;
   border-radius: 8px;
   border: none;
   color: #000000;
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.12), 0 1px 2px rgba(0, 0, 0, 0.15);
+  /* bevel: bright top-left edge, dark bottom-right edge */
+  box-shadow:
+    inset 1px 1px 0px rgba(255, 255, 255, 0.9),
+    inset -1px -1px 0px rgba(0, 0, 0, 0.18),
+    2px 2px 4px rgba(0, 0, 0, 0.15);
   cursor: pointer;
   font-size: 14px;
-  transition: all 0.2s;
+  transition: all 0.1s;
 }
 
 .drum-machine-button:hover {
-  background: rgba(0, 0, 0, 0.1);
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.12), 0 1px 2px rgba(0, 0, 0, 0.15);
+  background: #f0f0f0;
+  box-shadow:
+    inset 1px 1px 0px rgba(255, 255, 255, 0.9),
+    inset -1px -1px 0px rgba(0, 0, 0, 0.18),
+    2px 2px 4px rgba(0, 0, 0, 0.15);
 }
 
 .drum-machine-button:active {
-  background: rgba(0, 0, 0, 0.2);
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.06);
+  background: #d8d8d8;
+  /* invert bevel on press */
+  box-shadow:
+    inset -1px -1px 0px rgba(255, 255, 255, 0.7),
+    inset 1px 1px 0px rgba(0, 0, 0, 0.2),
+    1px 1px 2px rgba(0, 0, 0, 0.1);
+  transform: translateY(1px);
 }
 
 .drum-machine-button.playing {
-  background: #000000;
+  background: #1a1a1a;
   color: #ffffff;
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.12), 0 1px 2px rgba(0, 0, 0, 0.15);
+  box-shadow:
+    inset -1px -1px 0px rgba(255, 255, 255, 0.1),
+    inset 1px 1px 0px rgba(0, 0, 0, 0.5),
+    1px 1px 2px rgba(0, 0, 0, 0.2);
 }
 
 .drum-machine-button:disabled {
-  opacity: 0.5;
+  opacity: 0.45;
   cursor: not-allowed;
-  color: #303030;
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.12), 0 1px 2px rgba(0, 0, 0, 0.15);
+  color: #505050;
+  box-shadow:
+    inset 1px 1px 0px rgba(255, 255, 255, 0.6),
+    inset -1px -1px 0px rgba(0, 0, 0, 0.1),
+    1px 1px 2px rgba(0, 0, 0, 0.08);
 }
 
 .redact-mode-btn {
@@ -110,9 +137,25 @@
   opacity: 0.7;
 }
 
+.osc-input {
+  flex: 1;
+  min-width: 0;
+}
+
+.osc-port {
+  max-width: 70px;
+}
+
+.osc-colon {
+  font-size: 14px;
+  font-weight: 300;
+  color: #000000;
+  flex-shrink: 0;
+}
+
 .rectangle-selector {
   position: fixed;
-  border: 2px dashed #000000;
+  border: 0.5px dashed #000000;
   background: rgba(0, 0, 0, 0.1);
   pointer-events: none;
   z-index: 999998;
@@ -131,30 +174,26 @@
 
 .current-text-border {
   position: fixed;
-  border: 2px solid #00ff00;
   pointer-events: none;
-  z-index: 999999;
+  z-index: 999998;
   box-sizing: border-box;
-  background: transparent;
-  border-radius: 2px;
+  background: rgba(255, 234, 46, 0.452);
+  box-shadow: 0 0 4px rgba(161, 161, 161, 0.5) !important;
   transition: all 0.1s;
 }
 
 .highlighted-text {
   background: #000000 !important;
   color: #000000 !important;
-  padding: 2px 1px !important;
+  padding: 0px 0px !important;
   border-radius: 2px !important;
   transition: all 0.1s;
-  display: inline-block;
-  line-height: 1.2em;
-  font-family: 'Basteleur', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto,
-    sans-serif !important;
+  line-height: 1.05em;
 }
 
 .highlighted-text.active {
   background: #333333 !important;
-  box-shadow: 0 0 4px rgba(243, 229, 171, 0.5) !important;
+  box-shadow: 0 0 4px rgba(161, 161, 161, 0.5) !important;
 }
 
 /* Ensure links inside redacted text are completely black */
@@ -222,6 +261,7 @@
   height: 24px;
   display: flex;
   align-items: center;
+  z-index: 2;
   justify-content: center;
   padding: 0;
   border-radius: 4px;

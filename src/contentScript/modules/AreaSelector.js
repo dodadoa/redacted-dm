@@ -153,11 +153,12 @@ export class AreaSelector {
     border.style.top = areaData.y + 'px'
     border.style.width = areaData.width + 'px'
     border.style.height = areaData.height + 'px'
-    border.style.border = '2px solid #f3e5ab'
+    border.style.border = '0.5px dashed rgb(0, 0, 0)'
     border.style.pointerEvents = 'none'
     border.style.zIndex = '999997'
     border.style.boxSizing = 'border-box'
     border.style.background = 'transparent'
+    border.style.borderRadius = '4px'
     
     // Ensure anchor element has relative positioning
     const computedStyle = window.getComputedStyle(anchorElement)
