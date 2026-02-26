@@ -8,17 +8,22 @@ let drumMachine = null
 
 function initDrumMachine() {
   if (!drumMachine) {
-    drumMachine = new DrumMachine()
-    
-    // Check initial state from storage and show/hide accordingly
-    chrome.storage.local.get(['drumMachineOpen'], function (result) {
-      const isOpen = result.drumMachineOpen || false
-      if (isOpen) {
-        drumMachine.showOverlay()
-      } else {
-        drumMachine.hideOverlay()
-      }
-    })
+    try {
+      drumMachine = new DrumMachine()
+
+      // Restore open/closed state from storage
+      chrome.storage.local.get(['drumMachineOpen'], function (result) {
+        const isOpen = result.drumMachineOpen || false
+        if (isOpen) {
+          drumMachine.showOverlay()
+        } else {
+          drumMachine.hideOverlay()
+        }
+      })
+    } catch (e) {
+      console.error('[DrumMachine] init error:', e)
+      drumMachine = null
+    }
   }
   return drumMachine
 }
@@ -26,33 +31,35 @@ function initDrumMachine() {
 // Listen for messages from popup
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   if (request.type === 'TOGGLE_DRUM_MACHINE') {
-    if (!drumMachine) {
-      initDrumMachine()
-    }
-    
+    if (!drumMachine) initDrumMachine()
+
     if (drumMachine) {
-      if (request.open) {
-        drumMachine.showOverlay()
-      } else {
-        drumMachine.hideOverlay()
+      try {
+        if (request.open) {
+          drumMachine.showOverlay()
+        } else {
+          drumMachine.hideOverlay()
+        }
+        sendResponse({ success: true })
+      } catch (e) {
+        console.error('[DrumMachine] toggle error:', e)
+        sendResponse({ success: false, error: e.message })
       }
-      sendResponse({ success: true })
     } else {
-      sendResponse({ success: false })
+      sendResponse({ success: false, error: 'DrumMachine failed to initialise' })
     }
-    return true // Keep message channel open for async response
+    return true // keep channel open
   }
-  
-  // Also listen for state sync requests
+
   if (request.type === 'GET_DRUM_MACHINE_STATE') {
     const overlay = document.getElementById('drum-machine-overlay')
-    const isOpen = overlay && overlay.style.display !== 'none'
+    const isOpen = overlay ? overlay.style.display !== 'none' : false
     sendResponse({ open: isOpen })
     return true
   }
 })
 
-// Wait for DOM to be ready
+// Wait for DOM to be ready before creating the drum machine
 if (document.readyState === 'loading') {
   document.addEventListener('DOMContentLoaded', initDrumMachine)
 } else {

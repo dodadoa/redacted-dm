@@ -1,9 +1,24 @@
+const INSTRUMENTS = ['kick', 'snare', 'hihat', 'openhat', 'crash']
+
 export class AreaSelector {
   constructor(onAreaSelected) {
     this.isSelecting = false
     this.selectedAreas = []
-    this.areaBorderOverlays = []
+    this.areaBorderOverlays = [] // tracks borders AND pills for clearAll()
     this.onAreaSelected = onAreaSelected
+    this.mode = 'browser' // 'browser' | 'remote'
+  }
+
+  /** Switch between browser and remote modes.
+   *  In browser mode instrument pills are interactive.
+   *  In remote mode pills are hidden (instrument is irrelevant for OSC). */
+  setMode(mode) {
+    this.mode = mode
+    this.selectedAreas.forEach(areaData => {
+      if (areaData.pill) {
+        areaData.pill.style.display = mode === 'browser' ? '' : 'none'
+      }
+    })
   }
 
   startSelection() {
@@ -95,7 +110,9 @@ export class AreaSelector {
           height: rect.height,
           anchorElement: anchorElement,
           viewportX: rect.left,
-          viewportY: rect.top
+          viewportY: rect.top,
+          instrument: INSTRUMENTS[0], // default instrument
+          pill: null,                 // set in createAreaBorder
         }
 
         // Add to selected areas array
@@ -140,14 +157,17 @@ export class AreaSelector {
   createAreaBorder(areaData) {
     if (!areaData) return
 
-    // Create border overlay anchored to the element
+    const anchorElement = areaData.anchorElement || document.body
+
+    // Ensure anchor element has relative positioning so children are offset from it
+    const computedStyle = window.getComputedStyle(anchorElement)
+    if (computedStyle.position === 'static') {
+      anchorElement.style.position = 'relative'
+    }
+
+    // ── Dashed border (pointer-events:none so it never blocks page interaction) ──
     const border = document.createElement('div')
     border.className = 'area-border-overlay'
-    
-    // Position relative to anchor element
-    const anchorElement = areaData.anchorElement || document.body
-    
-    // Set position relative to anchor element
     border.style.position = 'absolute'
     border.style.left = areaData.x + 'px'
     border.style.top = areaData.y + 'px'
@@ -159,23 +179,43 @@ export class AreaSelector {
     border.style.boxSizing = 'border-box'
     border.style.background = 'transparent'
     border.style.borderRadius = '4px'
-    
-    // Ensure anchor element has relative positioning
-    const computedStyle = window.getComputedStyle(anchorElement)
-    if (computedStyle.position === 'static') {
-      anchorElement.style.position = 'relative'
-    }
-    
-    // Append to anchor element
+
     anchorElement.appendChild(border)
     this.areaBorderOverlays.push(border)
+
+    // ── Instrument pill (sibling of border — NOT a child — so pointer-events work) ──
+    const pill = document.createElement('button')
+    pill.className = 'area-instrument-pill'
+    pill.textContent = areaData.instrument.toUpperCase()
+    pill.title = 'Click to change instrument'
+
+    // Position pill centred above the top edge of the border
+    pill.style.position = 'absolute'
+    pill.style.left = (areaData.x + areaData.width / 2) + 'px'
+    pill.style.top = areaData.y + 'px'
+    pill.style.transform = 'translate(-50%, -100%)'
+    pill.style.zIndex = '999998'
+
+    // Only show in browser mode
+    pill.style.display = this.mode === 'browser' ? '' : 'none'
+
+    pill.addEventListener('click', (e) => {
+      e.stopPropagation()
+      const idx = INSTRUMENTS.indexOf(areaData.instrument)
+      areaData.instrument = INSTRUMENTS[(idx + 1) % INSTRUMENTS.length]
+      pill.textContent = areaData.instrument.toUpperCase()
+    })
+
+    areaData.pill = pill
+    anchorElement.appendChild(pill)
+    this.areaBorderOverlays.push(pill) // tracked so clearAll() removes it
   }
 
   clearAll() {
-    // Remove all border overlays
-    this.areaBorderOverlays.forEach(overlay => {
-      if (overlay && overlay.parentNode) {
-        overlay.parentNode.removeChild(overlay)
+    // Remove all border overlays and pills
+    this.areaBorderOverlays.forEach(el => {
+      if (el && el.parentNode) {
+        el.parentNode.removeChild(el)
       }
     })
     this.areaBorderOverlays = []
@@ -194,4 +234,3 @@ export class AreaSelector {
     return this.selectedAreas
   }
 }
-

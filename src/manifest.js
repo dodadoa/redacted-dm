@@ -40,9 +40,8 @@ export default defineManifest({
         'fonts/*.woff2',
         'fonts/*.otf',
       ],
-      matches: [],
+      matches: ['<all_urls>'],
     },
   ],
   permissions: ['sidePanel', 'storage', 'tabs', 'scripting'],
-  chrome_url_overrides: {},
 })

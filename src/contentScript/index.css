@@ -281,3 +281,28 @@
   opacity: 0.6;
 }
 
+/* ── Instrument pill on area border ──────────────────────────────────────── */
+.area-instrument-pill {
+  /* layout & positioning are set inline by AreaSelector.js */
+  background: #000000;
+  color: #ffffff;
+  border: none;
+  border-radius: 4px;
+  padding: 2px 8px;
+  font-family: 'Steps Mono', 'Courier New', monospace;
+  font-weight: 300;
+  font-size: 10px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  line-height: 1.7;
+  white-space: nowrap;
+  cursor: pointer;
+  user-select: none;
+  transition: background 0.1s;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.18);
+}
+
+.area-instrument-pill:hover {
+  background: #333333;
+}
+

@@ -62,6 +62,7 @@ export class OSCClient {
       this.ws = null
     }
     this.connected = false
+    this._notify(false, 'Disconnected')
   }
 
   // ─── Send ─────────────────────────────────────────────────────────────────

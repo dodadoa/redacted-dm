@@ -65,10 +65,14 @@ export class AudioEngine {
 
   /**
    * Called only when the current step is a redacted phrase.
-   * Browser: plays a synthesised drum sound.
+   * Browser: plays the drum sound assigned to this area's instrument.
    * Remote: sends /redacted-dm/trigger OSC message.
+   *
+   * @param {number} wordIndex      global redacted-phrase index (used as OSC arg)
+   * @param {number} areaIndex      which area this trigger came from
+   * @param {string|null} instrument  instrument name, e.g. 'kick', 'snare' (browser mode)
    */
-  playDrumSound(wordIndex, areaIndex = 0) {
+  playDrumSound(wordIndex, areaIndex = 0, instrument = null) {
     if (this.mode === 'remote') {
       this.oscClient.sendTrigger(areaIndex, wordIndex, 1.0)
       return
@@ -80,8 +84,13 @@ export class AudioEngine {
       this.audioContext.resume()
     }
 
-    const drumTypes = Object.keys(this.drumSounds)
-    const drumType = drumTypes[(wordIndex + areaIndex) % drumTypes.length]
+    // Use the area's selected instrument; fall back to index-cycling if not set
+    let drumType = instrument && this.drumSounds[instrument] ? instrument : null
+    if (!drumType) {
+      const drumTypes = Object.keys(this.drumSounds)
+      drumType = drumTypes[(wordIndex + areaIndex) % drumTypes.length]
+    }
+
     if (this.drumSounds[drumType]) {
       this.drumSounds[drumType]()
     }

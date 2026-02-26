@@ -123,6 +123,7 @@ export class DrumMachine {
     if (modeBrowserBtn) {
       modeBrowserBtn.addEventListener('click', () => {
         this.audioEngine.setMode('browser')
+        this.areaSelector.setMode('browser')
         modeBrowserBtn.classList.add('active')
         modeRemoteBtn?.classList.remove('active')
         if (oscGroup) oscGroup.style.display = 'none'
@@ -132,6 +133,7 @@ export class DrumMachine {
     if (modeRemoteBtn) {
       modeRemoteBtn.addEventListener('click', () => {
         this.audioEngine.setMode('remote')
+        this.areaSelector.setMode('remote')
         modeRemoteBtn.classList.add('active')
         modeBrowserBtn?.classList.remove('active')
         if (oscGroup) oscGroup.style.display = ''

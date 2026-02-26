@@ -32,40 +32,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
   let isOpen = false
 
-  // Get current state from storage and sync with content script
-  chrome.storage.local.get(['drumMachineOpen'], function (result) {
-    isOpen = result.drumMachineOpen || false
-    
-    // Also check actual state from content script
-    chrome.tabs.query({ active: true, currentWindow: true }, function (tabs) {
-      if (!tabs[0]) {
-        updateButtonState()
-        return
-      }
-      
-      const tab = tabs[0]
-      const url = tab.url || ''
-      
-      // Only check state on http/https pages
-      if (!url.startsWith('http://') && !url.startsWith('https://')) {
-        isOpen = false
-        chrome.storage.local.set({ drumMachineOpen: false })
-        updateButtonState()
-        return
-      }
-      
-      chrome.tabs.sendMessage(tab.id, {
-        type: 'GET_DRUM_MACHINE_STATE'
-      }, function (response) {
-        if (!chrome.runtime.lastError && response) {
-          // Sync with actual state
-          isOpen = response.open
-          chrome.storage.local.set({ drumMachineOpen: isOpen })
-        }
-        updateButtonState()
-      })
-    })
-  })
+  // ─── Helpers ───────────────────────────────────────────────────────────────
 
   function updateButtonState() {
     if (isOpen) {
@@ -79,24 +46,125 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   }
 
-  // Toggle button click handler
+  /**
+   * Inject the content script into a tab using the scripting API,
+   * then resolve once done (or reject on error).
+   */
+  function injectContentScript(tabId) {
+    return new Promise((resolve, reject) => {
+      // Read the content script file list from the built manifest so we always
+      // inject the correct hashed filename.
+      const manifest = chrome.runtime.getManifest()
+      const files = manifest.content_scripts?.[0]?.js ?? []
+      const cssFiles = manifest.content_scripts?.[0]?.css ?? []
+
+      if (files.length === 0) {
+        reject(new Error('No content script files found in manifest'))
+        return
+      }
+
+      const tasks = []
+
+      tasks.push(new Promise((res, rej) => {
+        chrome.scripting.executeScript(
+          { target: { tabId }, files },
+          () => chrome.runtime.lastError ? rej(new Error(chrome.runtime.lastError.message)) : res()
+        )
+      }))
+
+      if (cssFiles.length > 0) {
+        tasks.push(new Promise((res, rej) => {
+          chrome.scripting.insertCSS(
+            { target: { tabId }, files: cssFiles },
+            () => chrome.runtime.lastError ? rej(new Error(chrome.runtime.lastError.message)) : res()
+          )
+        }))
+      }
+
+      Promise.all(tasks).then(resolve).catch(reject)
+    })
+  }
+
+  /**
+   * Send TOGGLE_DRUM_MACHINE.  If the content script isn't listening, inject
+   * it first and retry once.
+   */
+  function sendToggle(tab, open) {
+    chrome.tabs.sendMessage(tab.id, { type: 'TOGGLE_DRUM_MACHINE', open }, (response) => {
+      if (chrome.runtime.lastError) {
+        // Content script not present — inject it, then retry
+        statusText.textContent = 'Injecting drum machine…'
+        injectContentScript(tab.id)
+          .then(() => {
+            // Give the script a moment to initialise
+            setTimeout(() => {
+              chrome.tabs.sendMessage(tab.id, { type: 'TOGGLE_DRUM_MACHINE', open }, (response2) => {
+                if (chrome.runtime.lastError) {
+                  statusText.textContent = 'Failed to load. Try refreshing the page.'
+                  isOpen = false
+                  chrome.storage.local.set({ drumMachineOpen: false })
+                  updateButtonState()
+                } else {
+                  updateButtonState()
+                }
+              })
+            }, 300)
+          })
+          .catch((err) => {
+            statusText.textContent = `Error: ${err.message}`
+            isOpen = false
+            chrome.storage.local.set({ drumMachineOpen: false })
+            updateButtonState()
+          })
+      } else {
+        updateButtonState()
+      }
+    })
+  }
+
+  // ─── Initial state sync ────────────────────────────────────────────────────
+
+  chrome.storage.local.get(['drumMachineOpen'], function (result) {
+    isOpen = result.drumMachineOpen || false
+
+    chrome.tabs.query({ active: true, currentWindow: true }, function (tabs) {
+      if (!tabs[0]) { updateButtonState(); return }
+
+      const tab = tabs[0]
+      const url = tab.url || ''
+
+      if (!url.startsWith('http://') && !url.startsWith('https://')) {
+        isOpen = false
+        chrome.storage.local.set({ drumMachineOpen: false })
+        updateButtonState()
+        return
+      }
+
+      chrome.tabs.sendMessage(tab.id, { type: 'GET_DRUM_MACHINE_STATE' }, function (response) {
+        if (!chrome.runtime.lastError && response) {
+          isOpen = response.open
+          chrome.storage.local.set({ drumMachineOpen: isOpen })
+        }
+        updateButtonState()
+      })
+    })
+  })
+
+  // ─── Toggle button ─────────────────────────────────────────────────────────
+
   toggleButton.addEventListener('click', function () {
     isOpen = !isOpen
-    
-    // Save state
     chrome.storage.local.set({ drumMachineOpen: isOpen })
-    
-    // Send message to content script
+
     chrome.tabs.query({ active: true, currentWindow: true }, function (tabs) {
       if (!tabs[0]) {
         statusText.textContent = 'No active tab found'
         return
       }
-      
+
       const tab = tabs[0]
       const url = tab.url || ''
-      
-      // Check if this is a page where content scripts can run
+
       if (!url.startsWith('http://') && !url.startsWith('https://')) {
         statusText.textContent = 'Drum machine only works on http/https pages'
         isOpen = false
@@ -104,28 +172,14 @@ document.addEventListener('DOMContentLoaded', () => {
         updateButtonState()
         return
       }
-      
-      chrome.tabs.sendMessage(tab.id, {
-        type: 'TOGGLE_DRUM_MACHINE',
-        open: isOpen
-      }, function (response) {
-        if (chrome.runtime.lastError) {
-          // Content script not loaded - this shouldn't happen on http/https pages
-          // but if it does, show a helpful message
-          statusText.textContent = 'Content script not loaded. Please refresh the page.'
-          isOpen = false
-          chrome.storage.local.set({ drumMachineOpen: false })
-          updateButtonState()
-        } else {
-          // Message sent successfully
-          updateButtonState()
-        }
-      })
+
+      sendToggle(tab, isOpen)
     })
   })
 
-  // Listen for state changes from content script
-  chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
+  // ─── State updates from content script ────────────────────────────────────
+
+  chrome.runtime.onMessage.addListener((request) => {
     if (request.type === 'DRUM_MACHINE_STATE') {
       isOpen = request.open
       updateButtonState()

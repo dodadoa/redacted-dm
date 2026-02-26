@@ -178,7 +178,7 @@ export class Sequencer {
         })
         
         if (redactedIndex >= 0) {
-          this.audioEngine.playDrumSound(redactedIndex + areaIndex, areaIndex)
+          this.audioEngine.playDrumSound(redactedIndex + areaIndex, areaIndex, selectedArea.instrument)
         }
       }
 
