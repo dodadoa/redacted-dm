@@ -85,35 +85,34 @@ export class DrumMachine {
     const bpmInput = document.getElementById('bpm-input')
     if (bpmInput) {
       bpmInput.addEventListener('input', (e) => {
-        const wasPlaying = this.sequencer.getIsPlaying()
         this.sequencer.setBPM(parseInt(e.target.value) || 120)
-        if (wasPlaying) {
-          this.play()
-        }
       })
     }
 
     const bpmDecreaseBtn = document.getElementById('bpm-decrease')
     if (bpmDecreaseBtn) {
       bpmDecreaseBtn.addEventListener('click', () => {
-        const wasPlaying = this.sequencer.getIsPlaying()
-        this.sequencer.setBPM(Math.max(60, this.sequencer.getBPM() - 5))
-        if (wasPlaying) {
-          this.play()
-        }
+        this.sequencer.setBPM(this.sequencer.getBPM() - 5)
       })
     }
 
     const bpmIncreaseBtn = document.getElementById('bpm-increase')
     if (bpmIncreaseBtn) {
       bpmIncreaseBtn.addEventListener('click', () => {
-        const wasPlaying = this.sequencer.getIsPlaying()
-        this.sequencer.setBPM(Math.min(200, this.sequencer.getBPM() + 5))
-        if (wasPlaying) {
-          this.play()
-        }
+        this.sequencer.setBPM(this.sequencer.getBPM() + 5)
       })
     }
+
+    // Speed multiplier buttons
+    const speedBtns = document.querySelectorAll('.speed-btn')
+    speedBtns.forEach(btn => {
+      btn.addEventListener('click', () => {
+        const mult = parseFloat(btn.dataset.mult)
+        // Update active state immediately in the UI
+        speedBtns.forEach(b => b.classList.toggle('active', b === btn))
+        this.sequencer.setSpeedMultiplier(mult)
+      })
+    })
 
     // Output mode buttons
     const modeBrowserBtn = document.getElementById('mode-browser')
@@ -204,12 +203,16 @@ export class DrumMachine {
   }
 
   onHighlightChange() {
-    // Re-extract text elements when highlights change
-    if (this.areaSelector.getSelectedAreas().length > 0) {
-      setTimeout(() => {
-        this.extractAllTextElements()
-      }, 10)
-    }
+    if (this.areaSelector.getSelectedAreas().length === 0) return
+    setTimeout(() => {
+      this.extractAllTextElements()
+      // If playing, queue the fresh elements so each area picks them up at its next cycle boundary
+      if (this.sequencer.getIsPlaying()) {
+        const allTextElements = this.textExtractor.getAllTextElements()
+        const highlightedWords = this.textHighlighter.getHighlightedWords()
+        this.sequencer.scheduleRefresh(allTextElements, highlightedWords)
+      }
+    }, 10)
   }
 
   toggleHighlightMode() {

@@ -196,6 +196,19 @@
   box-shadow: 0 0 4px rgba(161, 161, 161, 0.5) !important;
 }
 
+.highlighted-text.triggered {
+  background: #00ff88 !important;
+  color: #00ff88 !important;
+  box-shadow:
+    0 0 6px 2px #00ff88,
+    0 0 18px 4px rgba(0, 255, 136, 0.7) !important;
+  transition: background 0s, box-shadow 0s !important;
+}
+
+.highlighted-text.triggered * {
+  color: #00ff88 !important;
+}
+
 /* Ensure links inside redacted text are completely black */
 .highlighted-text a,
 .highlighted-text a:link,
@@ -304,5 +317,26 @@
 
 .area-instrument-pill:hover {
   background: #333333;
+}
+
+/* ── Speed multiplier row ────────────────────────────────────────────────── */
+#speed-row {
+  gap: 4px;
+}
+
+#speed-row .speed-btn {
+  flex: 1;
+  padding: 6px 4px;
+  font-size: 12px;
+  letter-spacing: 0;
+}
+
+#speed-row .speed-btn.active {
+  background: #000000;
+  color: #ffffff;
+  box-shadow:
+    inset -1px -1px 0px rgba(255, 255, 255, 0.1),
+    inset 1px 1px 0px rgba(0, 0, 0, 0.5),
+    1px 1px 2px rgba(0, 0, 0, 0.2);
 }
 

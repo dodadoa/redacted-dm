@@ -57,9 +57,16 @@ export class UI {
         <div class="control-group">
           <label>BPM</label>
           <div class="control-row">
-            <input type="number" class="bpm-input" id="bpm-input" value="120" min="60" max="200">
+            <input type="number" class="bpm-input" id="bpm-input" value="120" min="20" max="300">
             <button class="drum-machine-button" id="bpm-decrease">-</button>
             <button class="drum-machine-button" id="bpm-increase">+</button>
+          </div>
+          <div class="control-row" id="speed-row">
+            <button class="drum-machine-button speed-btn" data-mult="0.25">¼×</button>
+            <button class="drum-machine-button speed-btn" data-mult="0.5">½×</button>
+            <button class="drum-machine-button speed-btn active" data-mult="1">1×</button>
+            <button class="drum-machine-button speed-btn" data-mult="2">2×</button>
+            <button class="drum-machine-button speed-btn" data-mult="3">3×</button>
           </div>
         </div>
         <div class="control-group">
