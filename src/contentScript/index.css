@@ -267,6 +267,23 @@ a .highlighted-text.triggered * {
   box-shadow: none !important;
 }
 
+/* Override high-specificity link pseudo-class rules when triggered so links
+   inside free-redact spans don't bleed through the green flash */
+.highlighted-text.triggered a,
+.highlighted-text.triggered a:link,
+.highlighted-text.triggered a:visited,
+.highlighted-text.triggered a:hover,
+.highlighted-text.triggered a:active,
+.highlighted-text.triggered a:focus,
+.highlighted-text.triggered *:link,
+.highlighted-text.triggered *:visited,
+.highlighted-text.triggered *:hover,
+.highlighted-text.triggered *:active,
+.highlighted-text.triggered *:focus {
+  color: #00ff88 !important;
+  background-color: transparent !important;
+}
+
 /* Ensure links inside redacted text are completely black */
 .highlighted-text a,
 .highlighted-text a:link,
