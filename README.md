@@ -1,4 +1,4 @@
-# redacted-dm
+# Self-Censored Step Sequencer
 
 > a chrome extension tools built with Vite + Vanilla, and Manifest v3
 

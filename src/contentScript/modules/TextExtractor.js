@@ -1,237 +1,199 @@
+const UI_SELECTOR =
+  '.area-instrument-pill, .area-selector-header, .area-border-overlay, .drum-machine-overlay'
+
 export class TextExtractor {
   constructor() {
     this.allTextElements = []
   }
 
-  extractAllTextElements(selectedAreas, highlightedWords, redactMode = 'word') {
+  extractAllTextElements(selectedAreas, highlightedWords) {
     if (selectedAreas.length === 0) {
       this.allTextElements = []
       return []
     }
 
-    const textElements = []
     const processedNodes = new Set()
+    const words = selectedAreas.flatMap(area => this._collectWords(area, processedNodes))
 
-    // Process each selected area
-    selectedAreas.forEach(selectedArea => {
-      // Walk through document to find all text nodes in this area
-      const walker = document.createTreeWalker(
-        selectedArea.anchorElement || document.body,
-        NodeFilter.SHOW_TEXT,
-        {
-          acceptNode: (node) => {
-            if (processedNodes.has(node)) {
-              return NodeFilter.FILTER_REJECT
-            }
-            
-            const parent = node.parentElement
-            if (!parent) return NodeFilter.FILTER_REJECT
-            
-            // Exclude area UI (instrument pill, header, border) — they should not be sequencer beats
-            if (parent.closest?.('.area-instrument-pill, .area-selector-header, .area-border-overlay, .drum-machine-overlay')) {
-              return NodeFilter.FILTER_REJECT
-            }
-            
-            // Get position relative to anchor element
-            const anchorRect = selectedArea.anchorElement.getBoundingClientRect()
-            const parentRect = parent.getBoundingClientRect()
-            
-            // Calculate relative position (viewport coordinates to relative)
-            const relativeLeft = parentRect.left - anchorRect.left
-            const relativeTop = parentRect.top - anchorRect.top
-            
-            // Check if element is within or overlaps selected area
-            const isWithinArea = !(
-              (relativeLeft + parentRect.width) < selectedArea.x ||
-              relativeLeft > (selectedArea.x + selectedArea.width) ||
-              (relativeTop + parentRect.height) < selectedArea.y ||
-              relativeTop > (selectedArea.y + selectedArea.height)
-            )
-            
-            if (isWithinArea && node.nodeValue.trim().length > 0) {
-              processedNodes.add(node)
-              return NodeFilter.FILTER_ACCEPT
-            }
-            
-            return NodeFilter.FILTER_REJECT
-          }
-        },
-        false
-      )
+    this._sortByPosition(words)
+    this._markRedacted(words, highlightedWords)
 
-      let node
-      while (node = walker.nextNode()) {
-        const text = node.nodeValue
-        if (!text || text.trim().length === 0) continue
-
-        // Split into words (keeping spaces)
-        const parts = text.split(/(\S+)/)
-        
-        let offset = 0
-        parts.forEach(part => {
-          if (part.trim().length === 0) {
-            offset += part.length
-            return
-          }
-          
-          try {
-            const wordRange = document.createRange()
-            wordRange.setStart(node, offset)
-            wordRange.setEnd(node, offset + part.length)
-            
-            const wordRect = wordRange.getBoundingClientRect()
-            if (wordRect.width > 0 && wordRect.height > 0) {
-              // Check if word is within any of the selected areas
-              const anchorRect = selectedArea.anchorElement.getBoundingClientRect()
-              const wordRelativeLeft = wordRect.left - anchorRect.left
-              const wordRelativeTop = wordRect.top - anchorRect.top
-              const wordCenterX = wordRelativeLeft + wordRect.width / 2
-              const wordCenterY = wordRelativeTop + wordRect.height / 2
-              
-              // Check if word center is within this selected area
-              const isWithinArea = (
-                wordCenterX >= selectedArea.x &&
-                wordCenterY >= selectedArea.y &&
-                wordCenterX <= selectedArea.x + selectedArea.width &&
-                wordCenterY <= selectedArea.y + selectedArea.height
-              )
-              
-              // Also check if at least part of the word overlaps with the area
-              const overlapsArea = !(
-                (wordRelativeLeft + wordRect.width) < selectedArea.x ||
-                wordRelativeLeft > (selectedArea.x + selectedArea.width) ||
-                (wordRelativeTop + wordRect.height) < selectedArea.y ||
-                wordRelativeTop > (selectedArea.y + selectedArea.height)
-              )
-              
-              // Exclude area UI (instrument pill, header, etc.)
-              const parentEl = node.parentElement
-              if (parentEl?.closest?.('.area-instrument-pill, .area-selector-header, .area-border-overlay, .drum-machine-overlay')) {
-                offset += part.length
-                return
-              }
-              
-              // Only include if word is within or significantly overlaps the area
-              if (isWithinArea || (overlapsArea && wordRect.width > 0 && wordRect.height > 0)) {
-                textElements.push({
-                  text: part.trim(),
-                  range: wordRange.cloneRange(),
-                  element: node.parentElement,
-                  isRedacted: false
-                })
-              }
-            }
-            
-            offset += part.length
-          } catch (e) {
-            // Skip if range creation fails
-          }
-        })
-      }
-    })
-
-    // Sort by position (top to bottom, left to right)
-    textElements.sort((a, b) => {
-      try {
-        const rectA = a.range.getBoundingClientRect()
-        const rectB = b.range.getBoundingClientRect()
-        
-        const topDiff = rectA.top - rectB.top
-        if (Math.abs(topDiff) > 5) return topDiff
-        return rectA.left - rectB.left
-      } catch (e) {
-        return 0
-      }
-    })
-
-    // Mark redacted elements. In 'free' mode, merge all words in same phrase into one beat (even if word redactions are between them).
-    const resultElements = []
-    const outputPhrases = new Set() // track which free phrases we've already output
-
-    textElements.forEach((textEl, index) => {
-      try {
-        const textRect = textEl.range.getBoundingClientRect()
-        const matches = []
-        highlightedWords.forEach(redacted => {
-          try {
-            let matchesEl = false
-            if (redacted.element.contains(textEl.element) || textEl.element === redacted.element) {
-              matchesEl = true
-            } else {
-              const redactedRect = redacted.element.getBoundingClientRect()
-              const overlapX = Math.max(0, Math.min(textRect.right, redactedRect.right) - Math.max(textRect.left, redactedRect.left))
-              const overlapY = Math.max(0, Math.min(textRect.bottom, redactedRect.bottom) - Math.max(textRect.top, redactedRect.top))
-              const overlapArea = overlapX * overlapY
-              const textArea = textRect.width * textRect.height
-              if (overlapArea > textArea * 0.3) matchesEl = true
-            }
-            if (matchesEl) matches.push(redacted)
-          } catch (e) {}
-        })
-        // Prefer outermost match: when word span is nested inside free span, use free so phrase stays grouped
-        let matchedRedacted = null
-        if (matches.length > 0) {
-          matchedRedacted = matches.find(r => !matches.some(other => other !== r && other.element.contains(r.element)))
-            || matches[0]
-        }
-        textEl.isRedacted = matches.length > 0
-        textEl.matchedRedacted = matchedRedacted
-      } catch (e) {
-        textEl.isRedacted = false
-        textEl.matchedRedacted = null
-      }
-    })
-
-    // Group by redacted phrase. Merge only when a phrase has multiple words (free redaction = one span, multiple words).
-    const phraseGroups = new Map()
-    textElements.forEach((textEl) => {
-      if (textEl.isRedacted && textEl.matchedRedacted) {
-        const key = textEl.matchedRedacted
-        if (!phraseGroups.has(key)) {
-          phraseGroups.set(key, [])
-        }
-        phraseGroups.get(key).push(textEl)
-      }
-    })
-
-    // Output in document order. Multi-word groups = one merged beat; single-word = one beat.
-    textElements.forEach((textEl) => {
-      if (!textEl.isRedacted) {
-        resultElements.push(textEl)
-        return
-      }
-      const phrase = textEl.matchedRedacted
-      if (!phrase || outputPhrases.has(phrase)) return
-      outputPhrases.add(phrase)
-
-      const groupEls = phraseGroups.get(phrase) || [textEl]
-      if (groupEls.length === 1) {
-        resultElements.push(textEl)
-        return
-      }
-      // Multi-word phrase: merge into one beat
-      const first = groupEls[0]
-      const last = groupEls[groupEls.length - 1]
-      const merged = {
-        text: groupEls.map(e => e.text).join(' '),
-        range: first.range.cloneRange(),
-        element: first.element?.closest?.('.highlighted-text') || first.element,
-        isRedacted: true,
-      }
-      try {
-        merged.range.setEnd(last.range.endContainer, last.range.endOffset)
-      } catch (e) {
-        merged.text = groupEls.map(e => e.text).join(' ')
-      }
-      resultElements.push(merged)
-    })
-
-    this.allTextElements = resultElements
-    return resultElements
+    this.allTextElements = this._mergeGroups(words)
+    return this.allTextElements
   }
 
   getAllTextElements() {
     return this.allTextElements
   }
-}
 
+  // ── Private helpers ────────────────────────────────────────────────────────
+
+  /** Walk text nodes inside `area`, return one entry per visible word. */
+  _collectWords(area, processedNodes) {
+    const root = area.anchorElement || document.body
+    const anchorRect = root.getBoundingClientRect()
+    const words = []
+
+    const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, {
+      acceptNode: (node) => {
+        if (processedNodes.has(node)) return NodeFilter.FILTER_REJECT
+        const parent = node.parentElement
+        if (!parent) return NodeFilter.FILTER_REJECT
+        if (parent.closest?.(UI_SELECTOR)) return NodeFilter.FILTER_REJECT
+
+        const r = parent.getBoundingClientRect()
+        const relLeft = r.left - anchorRect.left
+        const relTop  = r.top  - anchorRect.top
+        const overlaps = !(
+          relLeft + r.width  < area.x ||
+          relLeft            > area.x + area.width  ||
+          relTop  + r.height < area.y ||
+          relTop             > area.y + area.height
+        )
+        if (overlaps && node.nodeValue.trim().length > 0) {
+          processedNodes.add(node)
+          return NodeFilter.FILTER_ACCEPT
+        }
+        return NodeFilter.FILTER_REJECT
+      },
+    })
+
+    let node
+    while ((node = walker.nextNode())) {
+      this._wordsFromNode(node, area, anchorRect, words)
+    }
+    return words
+  }
+
+  /** Split a single text node into per-word Range entries. */
+  _wordsFromNode(node, area, anchorRect, out) {
+    let offset = 0
+    for (const part of node.nodeValue.split(/(\S+)/)) {
+      const len = part.length
+      if (part.trim().length > 0) {
+        try {
+          const range = document.createRange()
+          range.setStart(node, offset)
+          range.setEnd(node, offset + len)
+          const rect = range.getBoundingClientRect()
+          if (rect.width > 0 && rect.height > 0 && this._wordInArea(rect, anchorRect, area)) {
+            out.push({ text: part.trim(), range: range.cloneRange(), element: node.parentElement, isRedacted: false })
+          }
+        } catch {
+          // skip if range creation fails
+        }
+      }
+      offset += len
+    }
+  }
+
+  /** True if `wordRect` centre or overlap falls within `area`. */
+  _wordInArea(wordRect, anchorRect, area) {
+    const relLeft = wordRect.left - anchorRect.left
+    const relTop  = wordRect.top  - anchorRect.top
+    const cx = relLeft + wordRect.width  / 2
+    const cy = relTop  + wordRect.height / 2
+    if (cx >= area.x && cy >= area.y && cx <= area.x + area.width && cy <= area.y + area.height) {
+      return true
+    }
+    // Fallback: word straddles the edge — accept any overlap
+    return !(
+      relLeft + wordRect.width  < area.x ||
+      relLeft                   > area.x + area.width  ||
+      relTop  + wordRect.height < area.y ||
+      relTop                    > area.y + area.height
+    )
+  }
+
+  /** Sort words top-to-bottom, then left-to-right (5 px line-height tolerance). */
+  _sortByPosition(words) {
+    words.sort((a, b) => {
+      try {
+        const ra = a.range.getBoundingClientRect()
+        const rb = b.range.getBoundingClientRect()
+        const dy = ra.top - rb.top
+        return Math.abs(dy) > 5 ? dy : ra.left - rb.left
+      } catch {
+        return 0
+      }
+    })
+  }
+
+  /** Annotate each word with its matched highlighted phrase (if any). */
+  _markRedacted(words, highlightedWords) {
+    words.forEach(word => {
+      try {
+        const wordRect = word.range.getBoundingClientRect()
+        const matches = highlightedWords.filter(hl => this._matchesHighlight(word, wordRect, hl))
+        word.isRedacted     = matches.length > 0
+        word.matchedRedacted = matches.length > 0
+          // Prefer the outermost span so nested word-spans stay grouped under their free-redact parent
+          ? (matches.find(r => !matches.some(o => o !== r && o.element.contains(r.element))) ?? matches[0])
+          : null
+      } catch {
+        word.isRedacted      = false
+        word.matchedRedacted = null
+      }
+    })
+  }
+
+  /** True when `word` overlaps with highlighted span `hl` (DOM containment, then rect area). */
+  _matchesHighlight(word, wordRect, hl) {
+    try {
+      if (hl.element.contains(word.element) || word.element === hl.element) return true
+      const hlRect = hl.element.getBoundingClientRect()
+      const ox = Math.max(0, Math.min(wordRect.right,  hlRect.right)  - Math.max(wordRect.left, hlRect.left))
+      const oy = Math.max(0, Math.min(wordRect.bottom, hlRect.bottom) - Math.max(wordRect.top,  hlRect.top))
+      return ox * oy > wordRect.width * wordRect.height * 0.3
+    } catch {
+      return false
+    }
+  }
+
+  /**
+   * Emit words in order; multi-word redacted phrases become one merged beat.
+   * Single-word redacts and plain words pass through unchanged.
+   */
+  _mergeGroups(words) {
+    // Group each redacted word under its phrase span
+    const groups = new Map()
+    words.forEach(w => {
+      if (!w.isRedacted || !w.matchedRedacted) return
+      const g = groups.get(w.matchedRedacted)
+      if (g) g.push(w)
+      else groups.set(w.matchedRedacted, [w])
+    })
+
+    const result = []
+    const seen   = new Set()
+
+    words.forEach(w => {
+      if (!w.isRedacted) {
+        result.push(w)
+        return
+      }
+      const phrase = w.matchedRedacted
+      if (!phrase || seen.has(phrase)) return
+      seen.add(phrase)
+
+      const group = groups.get(phrase) ?? [w]
+      if (group.length === 1) {
+        result.push(w)
+        return
+      }
+      // Multi-word: merge into a single beat spanning first → last word
+      const first  = group[0]
+      const last   = group[group.length - 1]
+      const merged = {
+        text:       group.map(e => e.text).join(' '),
+        range:      first.range.cloneRange(),
+        element:    first.element?.closest?.('.highlighted-text') ?? first.element,
+        isRedacted: true,
+      }
+      try { merged.range.setEnd(last.range.endContainer, last.range.endOffset) } catch {}
+      result.push(merged)
+    })
+
+    return result
+  }
+}
