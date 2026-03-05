@@ -1,4 +1,4 @@
-const INSTRUMENTS = ['kick', 'snare', 'hihat', 'openhat', 'crash']
+const INSTRUMENTS = ['kick', 'snare', 'hihat', 'openhat', 'laser']
 const REMOTE_INSTRUMENTS = ['inst1', 'inst2', 'inst3', 'inst4']
 
 export class AreaSelector {
