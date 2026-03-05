@@ -1,8 +1,8 @@
+/* ── Floating overlay (status badge over page) ───────────────────────────── */
 .drum-machine-overlay {
   position: fixed;
   top: 20px;
   right: 20px;
-  /* background-image injected by FontLoader.js via chrome.runtime.getURL — cannot use relative url() in content script CSS */
   border-radius: 16px;
   padding: 20px;
   z-index: 999999;
@@ -12,11 +12,51 @@
   font-weight: 300;
   color: #000000;
   backdrop-filter: blur(5px);
-  z-index: 999999;
 }
 
+.dm-status-title {
+  font-family: 'Basteleur', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  font-size: 18px;
+  line-height: 1.2;
+  color: #000000;
+  font-weight: 400;
+  margin-bottom: 12px;
+}
+
+.dm-status-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 13px;
+  color: #000000;
+}
+
+.dm-status-indicator {
+  font-size: 11px;
+  color: #aaaaaa;
+  transition: color 0.15s;
+}
+
+.dm-status-indicator.playing {
+  color: #00bb55;
+  text-shadow: 0 0 4px rgba(0, 187, 85, 0.6);
+}
+
+.dm-status-bpm {
+  color: #000000;
+  opacity: 0.8;
+}
+
+.dm-status-areas {
+  color: #000000;
+  opacity: 0.45;
+  font-size: 11px;
+}
+
+/* ── Overlay control styles ───────────────────────────────────────────────── */
+
 .drum-machine-overlay h1,
-.drum-machinelabel ay h2,
+.drum-machine-overlay h2,
 .drum-machine-overlay h3,
 .drum-machine-overlay h4,
 .drum-machine-overlay h5,
@@ -26,6 +66,7 @@
   font-size: 18px;
   color: #000000;
   font-family: 'Basteleur', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif !important;
+  font-weight: 400;
 }
 
 .drum-machine-controls {
@@ -58,7 +99,6 @@
   border-radius: 8px;
   border: none;
   color: #000000;
-  /* bevel: bright top-left edge, dark bottom-right edge */
   box-shadow:
     inset 1px 1px 0px rgba(255, 255, 255, 0.9),
     inset -1px -1px 0px rgba(0, 0, 0, 0.18),
@@ -78,7 +118,6 @@
 
 .drum-machine-button:active {
   background: #d8d8d8;
-  /* invert bevel on press */
   box-shadow:
     inset -1px -1px 0px rgba(255, 255, 255, 0.7),
     inset 1px 1px 0px rgba(0, 0, 0, 0.2),
@@ -152,6 +191,8 @@
   color: #000000;
   flex-shrink: 0;
 }
+
+/* ── Page-level overlays ──────────────────────────────────────────────────── */
 
 .rectangle-selector {
   position: fixed;

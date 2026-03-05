@@ -7,21 +7,10 @@ export class TextHighlighter {
 
   setRedactMode(mode) {
     this.redactMode = mode
-    
-    // Update button states
-    const wordBtn = document.getElementById('redact-mode-word')
-    const freeBtn = document.getElementById('redact-mode-free')
-    const status = document.getElementById('redact-mode-status')
-    
-    if (mode === 'word') {
-      if (wordBtn) wordBtn.classList.add('active')
-      if (freeBtn) freeBtn.classList.remove('active')
-      if (status) status.textContent = 'Word mode - redacts individual words'
-    } else {
-      if (wordBtn) wordBtn.classList.remove('active')
-      if (freeBtn) freeBtn.classList.add('active')
-      if (status) status.textContent = 'Free mode - redacts any selected text'
-    }
+  }
+
+  getRedactMode() {
+    return this.redactMode
   }
 
   handleTextSelection(selectedAreas) {

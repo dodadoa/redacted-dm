@@ -1,9 +1,9 @@
 import './index.css'
 import { DrumMachine } from './modules/DrumMachine.js'
+import { MSG } from '../shared/messages.js'
 
 console.info('contentScript is running')
 
-// Initialize drum machine when content script loads
 let drumMachine = null
 
 function initDrumMachine() {
@@ -11,7 +11,6 @@ function initDrumMachine() {
     try {
       drumMachine = new DrumMachine()
 
-      // Restore open/closed state from storage
       chrome.storage.local.get(['drumMachineOpen'], function (result) {
         const isOpen = result.drumMachineOpen || false
         if (isOpen) {
@@ -28,11 +27,9 @@ function initDrumMachine() {
   return drumMachine
 }
 
-// Listen for messages from popup
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
-  if (request.type === 'TOGGLE_DRUM_MACHINE') {
+  if (request.type === MSG.TOGGLE) {
     if (!drumMachine) initDrumMachine()
-
     if (drumMachine) {
       try {
         if (request.open) {
@@ -40,6 +37,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         } else {
           drumMachine.hideOverlay()
         }
+        chrome.storage.local.set({ drumMachineOpen: request.open })
         sendResponse({ success: true })
       } catch (e) {
         console.error('[DrumMachine] toggle error:', e)
@@ -48,18 +46,34 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     } else {
       sendResponse({ success: false, error: 'DrumMachine failed to initialise' })
     }
-    return true // keep channel open
+    return true
   }
 
-  if (request.type === 'GET_DRUM_MACHINE_STATE') {
+  if (request.type === MSG.GET_STATE) {
     const overlay = document.getElementById('drum-machine-overlay')
     const isOpen = overlay ? overlay.style.display !== 'none' : false
-    sendResponse({ open: isOpen })
+    const state = drumMachine ? drumMachine.getState() : null
+    sendResponse({ open: isOpen, state })
+    return true
+  }
+
+  if (request.type === MSG.COMMAND) {
+    if (!drumMachine) initDrumMachine()
+    if (drumMachine) {
+      try {
+        drumMachine.handleCommand(request.action, request.data || {})
+        sendResponse({ success: true, state: drumMachine.getState() })
+      } catch (e) {
+        console.error('[DrumMachine] command error:', e)
+        sendResponse({ success: false, error: e.message })
+      }
+    } else {
+      sendResponse({ success: false, error: 'DrumMachine failed to initialise' })
+    }
     return true
   }
 })
 
-// Wait for DOM to be ready before creating the drum machine
 if (document.readyState === 'loading') {
   document.addEventListener('DOMContentLoaded', initDrumMachine)
 } else {

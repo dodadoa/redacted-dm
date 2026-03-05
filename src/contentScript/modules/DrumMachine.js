@@ -1,3 +1,4 @@
+import { MSG, CMD } from '../../shared/messages.js'
 import { FontLoader } from './FontLoader.js'
 import { CSSInjector } from './CSSInjector.js'
 import { AudioEngine } from './AudioEngine.js'
@@ -10,8 +11,8 @@ import { UI } from './UI.js'
 export class DrumMachine {
   constructor() {
     this.highlightModeEnabled = false
-    
-    // Initialize modules
+    this._oscStatus = 'Not connected'
+
     this.ui = new UI()
     this.audioEngine = new AudioEngine()
     this.areaSelector = new AreaSelector((areaData) => {
@@ -22,7 +23,7 @@ export class DrumMachine {
     })
     this.textExtractor = new TextExtractor()
     this.sequencer = new Sequencer(this.audioEngine)
-    
+
     this.init()
   }
 
@@ -30,165 +31,72 @@ export class DrumMachine {
     FontLoader.load()
     CSSInjector.inject()
     this.ui.create()
-    this.setupEventListeners()
+    this.setupOverlayListeners()
+    this.setupPageListeners()
+
+    this.audioEngine.setOSCStatusCallback((connected, message) => {
+      this._oscStatus = message
+      this.broadcastState()
+    })
   }
 
-  setupEventListeners() {
-    // Close button
-    const closeBtn = document.getElementById('drum-machine-close')
-    if (closeBtn) {
-      closeBtn.addEventListener('click', () => {
-        this.hideOverlay()
-      })
-    }
+  // ─── Overlay button listeners ─────────────────────────────────────────────
 
-    // Select area button
-    const selectAreaBtn = document.getElementById('select-area-btn')
-    if (selectAreaBtn) {
-      selectAreaBtn.addEventListener('click', () => {
-        this.areaSelector.startSelection()
-      })
-    }
+  setupOverlayListeners() {
+    const on = (id, fn) => document.getElementById(id)?.addEventListener('click', fn)
 
-    // Clear areas button
-    const clearAreasBtn = document.getElementById('clear-areas-btn')
-    if (clearAreasBtn) {
-      clearAreasBtn.addEventListener('click', () => {
-        this.clearAllAreas()
-      })
-    }
+    on('drum-machine-close', () => this.hideOverlay())
+    on('select-area-btn',    () => this.areaSelector.startSelection())
+    on('clear-areas-btn',    () => this.clearAllAreas())
+    on('highlight-toggle-btn', () => this.toggleHighlightMode())
+    on('redact-mode-word',   () => { this.textHighlighter.setRedactMode('word');  this.broadcastState() })
+    on('redact-mode-free',   () => { this.textHighlighter.setRedactMode('free');  this.broadcastState() })
+    on('play-btn',           () => this.play())
+    on('stop-btn',           () => this.stop())
+    on('bpm-decrease',       () => { this.sequencer.setBPM(this.sequencer.getBPM() - 5); this.broadcastState() })
+    on('bpm-increase',       () => { this.sequencer.setBPM(this.sequencer.getBPM() + 5); this.broadcastState() })
+    on('mode-browser', () => {
+      this.audioEngine.setMode('browser')
+      this.areaSelector.setMode('browser')
+      this.broadcastState()
+    })
+    on('mode-remote', () => {
+      this.audioEngine.setMode('remote')
+      this.areaSelector.setMode('remote')
+      this.broadcastState()
+    })
+    on('osc-connect-btn', () => {
+      const host = document.getElementById('osc-host')?.value.trim() || '127.0.0.1'
+      const port = parseInt(document.getElementById('osc-port')?.value) || 8080
+      this._oscStatus = `Connecting to ${host}:${port}…`
+      this.broadcastState()
+      this.audioEngine.connectRemote(host, port)
+    })
+    on('osc-disconnect-btn', () => this.audioEngine.disconnectRemote())
 
-    // Highlight toggle button
-    const highlightToggleBtn = document.getElementById('highlight-toggle-btn')
-    if (highlightToggleBtn) {
-      highlightToggleBtn.addEventListener('click', () => {
-        this.toggleHighlightMode()
-      })
-    }
-
-    // Redact mode buttons
-    const redactModeWordBtn = document.getElementById('redact-mode-word')
-    if (redactModeWordBtn) {
-      redactModeWordBtn.addEventListener('click', () => {
-        this.textHighlighter.setRedactMode('word')
-      })
-    }
-
-    const redactModeFreeBtn = document.getElementById('redact-mode-free')
-    if (redactModeFreeBtn) {
-      redactModeFreeBtn.addEventListener('click', () => {
-        this.textHighlighter.setRedactMode('free')
-      })
-    }
-
-    // BPM controls
     const bpmInput = document.getElementById('bpm-input')
     if (bpmInput) {
       bpmInput.addEventListener('input', (e) => {
         this.sequencer.setBPM(parseInt(e.target.value) || 120)
+        this.broadcastState()
       })
     }
 
-    const bpmDecreaseBtn = document.getElementById('bpm-decrease')
-    if (bpmDecreaseBtn) {
-      bpmDecreaseBtn.addEventListener('click', () => {
-        this.sequencer.setBPM(this.sequencer.getBPM() - 5)
-      })
-    }
-
-    const bpmIncreaseBtn = document.getElementById('bpm-increase')
-    if (bpmIncreaseBtn) {
-      bpmIncreaseBtn.addEventListener('click', () => {
-        this.sequencer.setBPM(this.sequencer.getBPM() + 5)
-      })
-    }
-
-    // Speed multiplier buttons
-    const speedBtns = document.querySelectorAll('.speed-btn')
-    speedBtns.forEach(btn => {
+    document.querySelectorAll('.speed-btn').forEach(btn => {
       btn.addEventListener('click', () => {
-        const mult = parseFloat(btn.dataset.mult)
-        // Update active state immediately in the UI
-        speedBtns.forEach(b => b.classList.toggle('active', b === btn))
-        this.sequencer.setSpeedMultiplier(mult)
+        this.sequencer.setSpeedMultiplier(parseFloat(btn.dataset.mult))
+        this.broadcastState()
       })
     })
+  }
 
-    // Output mode buttons
-    const modeBrowserBtn = document.getElementById('mode-browser')
-    const modeRemoteBtn = document.getElementById('mode-remote')
-    const oscGroup = document.getElementById('osc-group')
+  // ─── Page-level listeners (text selection) ───────────────────────────────
 
-    if (modeBrowserBtn) {
-      modeBrowserBtn.addEventListener('click', () => {
-        this.audioEngine.setMode('browser')
-        this.areaSelector.setMode('browser')
-        modeBrowserBtn.classList.add('active')
-        modeRemoteBtn?.classList.remove('active')
-        if (oscGroup) oscGroup.style.display = 'none'
-      })
-    }
-
-    if (modeRemoteBtn) {
-      modeRemoteBtn.addEventListener('click', () => {
-        this.audioEngine.setMode('remote')
-        this.areaSelector.setMode('remote')
-        modeRemoteBtn.classList.add('active')
-        modeBrowserBtn?.classList.remove('active')
-        if (oscGroup) oscGroup.style.display = ''
-      })
-    }
-
-    // OSC connect / disconnect
-    const oscConnectBtn = document.getElementById('osc-connect-btn')
-    const oscDisconnectBtn = document.getElementById('osc-disconnect-btn')
-    const oscStatusEl = document.getElementById('osc-status')
-
-    this.audioEngine.setOSCStatusCallback((connected, message) => {
-      if (oscStatusEl) oscStatusEl.textContent = message
-      if (oscConnectBtn) oscConnectBtn.disabled = connected
-      if (oscDisconnectBtn) oscDisconnectBtn.disabled = !connected
-    })
-
-    if (oscConnectBtn) {
-      oscConnectBtn.addEventListener('click', () => {
-        const host = document.getElementById('osc-host')?.value.trim() || '127.0.0.1'
-        const port = parseInt(document.getElementById('osc-port')?.value) || 8080
-        if (oscStatusEl) oscStatusEl.textContent = `Connecting to ${host}:${port}…`
-        this.audioEngine.connectRemote(host, port)
-      })
-    }
-
-    if (oscDisconnectBtn) {
-      oscDisconnectBtn.addEventListener('click', () => {
-        this.audioEngine.disconnectRemote()
-      })
-    }
-
-    // Play/Stop buttons
-    const playBtn = document.getElementById('play-btn')
-    if (playBtn) {
-      playBtn.addEventListener('click', () => {
-        this.play()
-      })
-    }
-
-    const stopBtn = document.getElementById('stop-btn')
-    if (stopBtn) {
-      stopBtn.addEventListener('click', () => {
-        this.stop()
-      })
-    }
-
-    // Listen for text selection (only when highlight mode is enabled)
+  setupPageListeners() {
     let selectionTimeout = null
     document.addEventListener('mouseup', () => {
       if (this.highlightModeEnabled && !this.areaSelector.isSelecting) {
-        // Clear any pending timeout
-        if (selectionTimeout) {
-          clearTimeout(selectionTimeout)
-        }
-        // Small delay to ensure selection is complete
+        if (selectionTimeout) clearTimeout(selectionTimeout)
         selectionTimeout = setTimeout(() => {
           this.handleTextSelection()
           selectionTimeout = null
@@ -197,48 +105,108 @@ export class DrumMachine {
     })
   }
 
+  // ─── Command handler (called from content script message listener) ────────
+
+  handleCommand(action, data = {}) {
+    switch (action) {
+      case CMD.PLAY:
+        this.play()
+        break
+      case CMD.STOP:
+        this.stop()
+        break
+      case CMD.SELECT_AREA:
+        this.areaSelector.startSelection()
+        break
+      case CMD.CLEAR_AREAS:
+        this.clearAllAreas()
+        break
+      case CMD.SET_BPM:
+        this.sequencer.setBPM(Number(data.value) || 120)
+        this.broadcastState()
+        break
+      case CMD.SET_SPEED:
+        this.sequencer.setSpeedMultiplier(Number(data.value) || 1)
+        this.broadcastState()
+        break
+      case CMD.TOGGLE_REDACT:
+        this.toggleHighlightMode()
+        break
+      case CMD.SET_REDACT_TYPE:
+        this.textHighlighter.setRedactMode(data.value)
+        this.broadcastState()
+        break
+      case CMD.SET_OUTPUT_MODE:
+        this.audioEngine.setMode(data.value)
+        this.areaSelector.setMode(data.value)
+        this.broadcastState()
+        break
+      case CMD.OSC_CONNECT:
+        this._oscStatus = `Connecting to ${data.host}:${data.port}…`
+        this.broadcastState()
+        this.audioEngine.connectRemote(data.host, data.port)
+        break
+      case CMD.OSC_DISCONNECT:
+        this.audioEngine.disconnectRemote()
+        break
+      default:
+        break
+    }
+  }
+
+  // ─── State ────────────────────────────────────────────────────────────────
+
+  getState() {
+    return {
+      isPlaying: this.sequencer.getIsPlaying(),
+      bpm: this.sequencer.getBPM(),
+      speed: this.sequencer.getSpeedMultiplier(),
+      outputMode: this.audioEngine.getMode(),
+      oscConnected: this.audioEngine.isRemoteConnected(),
+      oscStatus: this._oscStatus,
+      highlightEnabled: this.highlightModeEnabled,
+      areaCount: this.areaSelector.getSelectedAreas().length,
+      highlightCount: this.textHighlighter.getHighlightedWords().length,
+      redactMode: this.textHighlighter.getRedactMode(),
+      overlayOpen: this.ui.isVisible(),
+    }
+  }
+
+  broadcastState() {
+    const state = this.getState()
+    this.ui.syncToState(state)
+    chrome.runtime.sendMessage({ type: MSG.STATE, state }).catch(() => {})
+  }
+
+  // ─── Callbacks from sub-modules ───────────────────────────────────────────
+
   onAreaSelected(areaData) {
-    // Re-extract text elements when area is selected
     this.extractAllTextElements()
+    this.broadcastState()
   }
 
   onHighlightChange() {
     if (this.areaSelector.getSelectedAreas().length === 0) return
     setTimeout(() => {
       this.extractAllTextElements()
-      // If playing, queue the fresh elements so each area picks them up at its next cycle boundary
       if (this.sequencer.getIsPlaying()) {
         const allTextElements = this.textExtractor.getAllTextElements()
         const highlightedWords = this.textHighlighter.getHighlightedWords()
         this.sequencer.scheduleRefresh(allTextElements, highlightedWords)
       }
+      this.broadcastState()
     }, 10)
   }
 
+  // ─── Core actions ─────────────────────────────────────────────────────────
+
   toggleHighlightMode() {
-    this.highlightModeEnabled = !this.highlightModeEnabled
-    const btn = document.getElementById('highlight-toggle-btn')
-    
-    if (this.highlightModeEnabled) {
-      if (btn) {
-        btn.textContent = 'Disable Redact'
-        btn.classList.add('playing')
-      }
-      if (this.areaSelector.getSelectedAreas().length === 0) {
-        alert('Please select at least one area first!')
-        this.highlightModeEnabled = false
-        if (btn) {
-          btn.textContent = 'Enable Redact'
-          btn.classList.remove('playing')
-        }
-        return
-      }
-    } else {
-      if (btn) {
-        btn.textContent = 'Enable Redact'
-        btn.classList.remove('playing')
-      }
+    if (!this.highlightModeEnabled && this.areaSelector.getSelectedAreas().length === 0) {
+      alert('Please select at least one area first!')
+      return
     }
+    this.highlightModeEnabled = !this.highlightModeEnabled
+    this.broadcastState()
   }
 
   clearAllAreas() {
@@ -246,6 +214,7 @@ export class DrumMachine {
     this.textHighlighter.clearHighlights()
     this.areaSelector.clearAll()
     this.textExtractor.allTextElements = []
+    this.broadcastState()
   }
 
   extractAllTextElements() {
@@ -257,41 +226,29 @@ export class DrumMachine {
   handleTextSelection() {
     const selectedAreas = this.areaSelector.getSelectedAreas()
     if (selectedAreas.length === 0 || !this.highlightModeEnabled) return
-    
     this.textHighlighter.handleTextSelection(selectedAreas)
   }
 
   play() {
     const selectedAreas = this.areaSelector.getSelectedAreas()
-    
-    // Re-extract text elements to ensure we have the latest
     this.extractAllTextElements()
-    
     const allTextElements = this.textExtractor.getAllTextElements()
     const highlightedWords = this.textHighlighter.getHighlightedWords()
-    
-    // If sequencer was playing, we need to restart it with new BPM
-    if (this.sequencer.getIsPlaying()) {
-      this.sequencer.stop()
-    }
-    
+    if (this.sequencer.getIsPlaying()) this.sequencer.stop()
     this.sequencer.play(selectedAreas, allTextElements, highlightedWords)
+    this.broadcastState()
   }
 
   stop() {
     this.sequencer.stop()
+    this.broadcastState()
   }
 
-  toggleOverlay(show) {
-    if (show) {
-      this.showOverlay()
-    } else {
-      this.hideOverlay()
-    }
-  }
+  // ─── Show / hide overlay ──────────────────────────────────────────────────
 
   showOverlay() {
     this.ui.show()
+    this.broadcastState()
   }
 
   hideOverlay() {
@@ -299,4 +256,3 @@ export class DrumMachine {
     this.ui.hide()
   }
 }
-

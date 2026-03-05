@@ -1,0 +1,30 @@
+@font-face {
+  font-family: 'Basteleur';
+  src: url('fonts/Basteleur-Moonlight.woff2') format('woff2'),
+       url('fonts/Basteleur-Moonlight.woff') format('woff');
+  font-weight: normal;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Basteleur';
+  src: url('fonts/Basteleur-Bold.woff2') format('woff2'),
+       url('fonts/Basteleur-Bold.woff') format('woff');
+  font-weight: bold;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Steps Mono';
+  src: url('fonts/Steps-Mono.otf') format('opentype');
+  font-weight: normal;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Steps Mono';
+  src: url('fonts/Steps-Mono-Thin.otf') format('opentype');
+  font-weight: 300;
+  font-style: normal;
+  font-display: swap;
+}

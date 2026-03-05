@@ -76,16 +76,6 @@ export class Sequencer {
     this.isPlaying = true
     this.currentStep = 0
 
-    const playBtn = document.getElementById('play-btn')
-    const stopBtn = document.getElementById('stop-btn')
-    if (playBtn) {
-      playBtn.disabled = true
-      playBtn.classList.add('playing')
-    }
-    if (stopBtn) {
-      stopBtn.disabled = false
-    }
-
     // Calculate step duration in milliseconds (16th notes) using effective BPM
     const stepDuration = (60 / (this.bpm * this.speedMultiplier)) * 1000 / 4
 
@@ -252,16 +242,6 @@ export class Sequencer {
       this.stepInterval = null
     }
 
-    const playBtn = document.getElementById('play-btn')
-    const stopBtn = document.getElementById('stop-btn')
-    if (playBtn) {
-      playBtn.disabled = false
-      playBtn.classList.remove('playing')
-    }
-    if (stopBtn) {
-      stopBtn.disabled = true
-    }
-
     // Remove step borders
     this.currentTextBorders.forEach(border => {
       if (border && border.parentNode) {
@@ -279,9 +259,6 @@ export class Sequencer {
 
   setBPM(bpm) {
     this.bpm = Math.max(20, Math.min(300, bpm))
-    const bpmInput = document.getElementById('bpm-input')
-    if (bpmInput) bpmInput.value = this.bpm
-    this._updateEffectiveBpmDisplay()
     if (this.isPlaying) this._restartInterval()
   }
 
@@ -291,7 +268,6 @@ export class Sequencer {
 
   setSpeedMultiplier(mult) {
     this.speedMultiplier = mult
-    this._updateEffectiveBpmDisplay()
     if (this.isPlaying) this._restartInterval()
   }
 

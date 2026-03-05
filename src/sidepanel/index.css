@@ -1,54 +1,322 @@
 :root {
-  font-family:
-    system-ui,
-    -apple-system,
-    BlinkMacSystemFont,
-    'Segoe UI',
-    Roboto,
-    Oxygen,
-    Ubuntu,
-    Cantarell,
-    'Open Sans',
-    'Helvetica Neue',
-    sans-serif;
-
-  color-scheme: light dark;
-  background-color: #242424;
+  font-family: 'Steps Mono', 'Courier New', monospace;
+  font-weight: 300;
+  color: #000000;
+  background-color: #c9c9c9;
 }
 
-@media (prefers-color-scheme: light) {
-  :root {
-    background-color: #fafafa;
-  }
-
-  a:hover {
-    color: #f3e5ab;
-  }
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
 }
 
 body {
-  min-width: 20rem;
-  margin: 0;
+  font-family: 'Steps Mono', 'Courier New', monospace;
+  font-weight: 300;
+  background: #d8d8d8;
+  min-width: 260px;
+  color: #000000;
 }
 
-main {
+/* ── Layout (scrollable) ──────────────────────────────────────────────────── */
+
+#app {
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+  max-height: 100vh;
+  overflow: hidden;
+}
+
+header {
+  padding: 16px 18px 12px;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.08);
+  flex-shrink: 0;
+}
+
+header h1 {
+  font-family: 'Basteleur', system-ui, sans-serif;
+  font-weight: 400;
+  font-size: 18px;
+  line-height: 1.25;
+  color: #000000;
+}
+
+header p {
+  font-family: 'Steps Mono', 'Courier New', monospace;
+  font-weight: 300;
+  font-size: 11px;
+  color: rgba(0, 0, 0, 0.5);
+  margin-top: 4px;
+  letter-spacing: 0.03em;
+}
+
+.panel-body {
+  flex: 1;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding: 14px 18px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+/* ── Section ─────────────────────────────────────────────────────────────── */
+
+.section {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.section-label {
+  font-size: 12px;
+  font-family: 'Basteleur', system-ui, sans-serif;
+  color: #000000;
+  margin-bottom: 2px;
+}
+
+/* ── Button row ───────────────────────────────────────────────────────────── */
+
+.btn-row {
+  display: flex;
+  gap: 8px;
+}
+
+/* ── Base button (overlay style) ──────────────────────────────────────────── */
+
+.btn {
+  padding: 8px 14px;
+  background: #dfdfdf;
+  border: none;
+  border-radius: 8px;
+  color: #000000;
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 300;
+  cursor: pointer;
+  box-shadow:
+    inset 1px 1px 0px rgba(255, 255, 255, 0.9),
+    inset -1px -1px 0px rgba(0, 0, 0, 0.18),
+    2px 2px 4px rgba(0, 0, 0, 0.15);
+  transition: all 0.1s;
+  white-space: nowrap;
+}
+
+.btn:hover {
+  background: #f0f0f0;
+}
+
+.btn:active {
+  background: #d8d8d8;
+  box-shadow:
+    inset -1px -1px 0px rgba(255, 255, 255, 0.7),
+    inset 1px 1px 0px rgba(0, 0, 0, 0.2),
+    1px 1px 2px rgba(0, 0, 0, 0.1);
+  transform: translateY(1px);
+}
+
+.btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+  color: #505050;
+  transform: none;
+  box-shadow:
+    inset 1px 1px 0px rgba(255, 255, 255, 0.6),
+    inset -1px -1px 0px rgba(0, 0, 0, 0.1),
+    1px 1px 2px rgba(0, 0, 0, 0.08);
+}
+
+.btn.active {
+  background: #000000;
+  color: #ffffff;
+  box-shadow:
+    inset -1px -1px 0px rgba(255, 255, 255, 0.1),
+    inset 1px 1px 0px rgba(0, 0, 0, 0.5),
+    1px 1px 2px rgba(0, 0, 0, 0.2);
+}
+
+.btn.active:hover {
+  background: #1a1a1a;
+}
+
+.btn-full {
+  flex: 1;
+}
+
+.btn-play {
+  flex: 1;
+  background: #e8f5e9;
+  color: #1b5e20;
+  box-shadow:
+    inset 1px 1px 0px rgba(255, 255, 255, 0.9),
+    inset -1px -1px 0px rgba(0, 0, 0, 0.1),
+    2px 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.btn-play:hover {
+  background: #c8e6c9;
+}
+
+.btn-play.playing {
+  background: #000000;
+  color: #00ff88;
+  box-shadow:
+    inset -1px -1px 0px rgba(255, 255, 255, 0.1),
+    inset 1px 1px 0px rgba(0, 0, 0, 0.5),
+    0 0 8px rgba(0, 255, 136, 0.3);
+}
+
+.btn-stop {
+  flex: 1;
+}
+
+/* ── BPM row ─────────────────────────────────────────────────────────────── */
+
+.bpm-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.bpm-input {
+  width: 68px;
+  padding: 6px 8px;
+  background: #ffffff;
+  border: none;
+  border-radius: 6px;
+  color: #000000;
+  font-family: inherit;
+  font-size: 14px;
+  font-weight: 300;
   text-align: center;
-  padding: 1em;
-  margin: 0 auto;
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.12);
 }
 
-h3 {
-  color: #f3e5ab;
-  text-transform: uppercase;
-  font-size: 1.5rem;
-  font-weight: 200;
-  line-height: 1.2rem;
-  margin: 2rem auto;
+.bpm-input:focus {
+  outline: none;
+  box-shadow: 0 0 0 2px rgba(0, 0, 0, 0.2);
 }
 
-a {
-  font-size: 0.5rem;
-  margin: 0.5rem;
-  color: #cccccc;
-  text-decoration: none;
+.btn-bpm {
+  width: 32px;
+  padding: 6px 0;
+  text-align: center;
+  font-size: 18px;
+  font-weight: 300;
+}
+
+.bpm-label {
+  font-size: 11px;
+  color: rgba(0, 0, 0, 0.5);
+  margin-left: 4px;
+}
+
+/* ── Speed buttons ───────────────────────────────────────────────────────── */
+
+.speed-row {
+  display: flex;
+  gap: 4px;
+}
+
+.btn-speed {
+  flex: 1;
+  padding: 6px 4px;
+  font-size: 12px;
+  letter-spacing: 0;
+}
+
+/* ── OSC group ───────────────────────────────────────────────────────────── */
+
+.osc-group {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.osc-inputs {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.osc-input {
+  flex: 1;
+  padding: 6px 8px;
+  background: #ffffff;
+  border: none;
+  border-radius: 6px;
+  color: #000000;
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 300;
+  min-width: 0;
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.12);
+}
+
+.osc-input:focus {
+  outline: none;
+  box-shadow: 0 0 0 2px rgba(0, 0, 0, 0.2);
+}
+
+.osc-port-input {
+  max-width: 64px;
+}
+
+.osc-colon {
+  color: rgba(0, 0, 0, 0.5);
+  font-size: 14px;
+  flex-shrink: 0;
+}
+
+/* ── Status text ─────────────────────────────────────────────────────────── */
+
+.status-line {
+  font-family: 'Steps Mono', 'Courier New', monospace;
+  font-weight: 300;
+  font-size: 11px;
+  color: rgba(0, 0, 0, 0.6);
+  line-height: 1.5;
+  padding: 3px 0;
+}
+
+.status-line.ok {
+  color: #2e7d32;
+}
+
+.status-line.warn {
+  color: #e65100;
+}
+
+/* ── No-tab notice ───────────────────────────────────────────────────────── */
+
+.notice {
+  font-family: 'Steps Mono', 'Courier New', monospace;
+  font-weight: 300;
+  font-size: 12px;
+  color: rgba(0, 0, 0, 0.6);
+  text-align: center;
+  padding: 24px 14px;
+  line-height: 1.6;
+}
+
+/* ── Scrollbar ───────────────────────────────────────────────────────────── */
+
+.panel-body::-webkit-scrollbar {
+  width: 6px;
+}
+
+.panel-body::-webkit-scrollbar-track {
+  background: rgba(0, 0, 0, 0.04);
+  border-radius: 3px;
+}
+
+.panel-body::-webkit-scrollbar-thumb {
+  background: rgba(0, 0, 0, 0.2);
+  border-radius: 3px;
+}
+
+.panel-body::-webkit-scrollbar-thumb:hover {
+  background: rgba(0, 0, 0, 0.3);
 }
