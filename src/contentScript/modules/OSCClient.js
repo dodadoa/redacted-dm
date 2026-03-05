@@ -69,13 +69,15 @@ export class OSCClient {
 
   /**
    * Send a step message — fired on every sequencer tick regardless of redaction.
-   * Address: /redacted-dm/step
+   * Address: /redacted-dm/inst{N}/step  (e.g. inst1, inst2, inst3, inst4)
    * Args:    areaIndex (int32), stepIndex (int32), isRedacted (int32 0|1)
+   * @param {string} [inst]  instrument sub-path (inst1, inst2, etc.); defaults to inst${areaIndex+1}
    */
-  sendStep(areaIndex, stepIndex, isRedacted) {
+  sendStep(areaIndex, stepIndex, isRedacted, inst = null) {
     if (!this.connected || !this.ws || this.ws.readyState !== WebSocket.OPEN) return
 
-    const msg = OSCClient.buildMessage('/redacted-dm/step', [
+    const instPath = inst ?? `inst${areaIndex + 1}`
+    const msg = OSCClient.buildMessage(`/redacted-dm/${instPath}/step`, [
       { type: 'i', value: areaIndex },
       { type: 'i', value: stepIndex },
       { type: 'i', value: isRedacted ? 1 : 0 },
@@ -86,13 +88,15 @@ export class OSCClient {
 
   /**
    * Send a trigger message — fired only when the current step is a redacted phrase.
-   * Address: /redacted-dm/trigger
+   * Address: /redacted-dm/inst{N}/trigger  (e.g. inst1, inst2, inst3, inst4)
    * Args:    areaIndex (int32), redactedIndex (int32), velocity (float32 0–1)
+   * @param {string} [inst]  instrument sub-path (inst1, inst2, etc.); defaults to inst${areaIndex+1}
    */
-  sendTrigger(areaIndex, redactedIndex, velocity = 1.0) {
+  sendTrigger(areaIndex, redactedIndex, velocity = 1.0, inst = null) {
     if (!this.connected || !this.ws || this.ws.readyState !== WebSocket.OPEN) return
 
-    const msg = OSCClient.buildMessage('/redacted-dm/trigger', [
+    const instPath = inst ?? `inst${areaIndex + 1}`
+    const msg = OSCClient.buildMessage(`/redacted-dm/${instPath}/trigger`, [
       { type: 'i', value: areaIndex },
       { type: 'i', value: redactedIndex },
       { type: 'f', value: velocity },

@@ -13,21 +13,47 @@ s.waitForBoot {
 (
 var lastPingTime = 0.0, minPingInterval = 0.1; // seconds between synth triggers
 
-OSCdef(\ping57120,
-    { |msg, time|
-        var freq, amp, shift;
-        if ((time - lastPingTime) > minPingInterval) {
-            lastPingTime = time;
-			freq = rrand(200.0, 700.0);
-			shift = rrand(1, 8);
-            Synth(\blip, [\freq, freq, \amp, 1, \ps, shift]);
-			Synth(\bass, [\freq, freq, \amp, 1, \ps, shift]);
-        };
-    },
-    '/redacted-dm/trigger',
-    nil,      // srcID
-    57120     // recvPort
-);
+// Each area sends to its own OSC path: /redacted-dm/inst1/trigger, inst2, inst3, inst4
+// msg: [address, areaIndex, redactedIndex, velocity]
+[\inst1].do { |inst|
+    OSCdef(("redacted_" ++ inst).asSymbol,
+        { |msg, time|
+            var freq, amp, shift;
+            if ((time - lastPingTime) > minPingInterval) {
+                lastPingTime = time;
+                freq = rrand(200.0, 700.0);
+                shift = rrand(1, 8);
+                Synth(\blip, [\freq, freq, \amp, 1, \ps, shift]);
+            };
+        },
+        ("/redacted-dm/" ++ inst ++ "/trigger").asString,
+        nil,
+        57120
+    );
+};
+)
+
+(
+var lastPingTime = 0.0, minPingInterval = 0.1; // seconds between synth triggers
+
+// Each area sends to its own OSC path: /redacted-dm/inst1/trigger, inst2, inst3, inst4
+// msg: [address, areaIndex, redactedIndex, velocity]
+[\inst2].do { |inst|
+    OSCdef(("redacted_" ++ inst).asSymbol,
+        { |msg, time|
+            var freq, amp, shift;
+            if ((time - lastPingTime) > minPingInterval) {
+                lastPingTime = time;
+                freq = rrand(200.0, 700.0);
+                shift = rrand(1, 8);
+                Synth(\bass, [\freq, freq, \amp, 1, \ps, shift]);
+            };
+        },
+        ("/redacted-dm/" ++ inst ++ "/trigger").asString,
+        nil,
+        57120
+    );
+};
 )
 
 

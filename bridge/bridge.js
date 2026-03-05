@@ -25,10 +25,13 @@
  *
  * OSC message schema
  * ───────────────────
- *   Address : /redacted-dm/trigger
+ *   Address : /redacted-dm/inst{N}/trigger  (inst1, inst2, inst3, inst4)
  *   Args    : areaIndex (int32)  — which selection area (0-based)
  *             redactedIndex (int32) — which redacted phrase in that area
  *             velocity (float32)    — always 1.0 for now
+ *
+ *   Address : /redacted-dm/inst{N}/step
+ *   Args    : areaIndex (int32), stepIndex (int32), isRedacted (int32 0|1)
  */
 
 const { createServer } = await import('http')
@@ -77,23 +80,25 @@ wss.on('connection', (ws, req) => {
       const { value: addr, nextOffset } = readOSCString(buf, 0)
       address = addr
 
-      if (address === '/redacted-dm/trigger') {
+      if (/^\/redacted-dm\/inst\d+\/trigger$/.test(address)) {
         // Args: areaIndex (i), redactedIndex (i), velocity (f)
         const { nextOffset: o2 } = readOSCString(buf, nextOffset) // skip type tag
         const areaIdx     = buf.readInt32BE(o2)
         const redactIdx   = buf.readInt32BE(o2 + 4)
         const velocity    = buf.readFloatBE(o2 + 8)
+        const inst = address.match(/inst\d+/)?.[0] ?? '?'
         console.log(
-          `[TRIGGER] area=${areaIdx}  redacted=${redactIdx}  vel=${velocity.toFixed(2)}`
+          `[TRIGGER] ${inst} area=${areaIdx}  redacted=${redactIdx}  vel=${velocity.toFixed(2)}`
         )
-      } else if (address === '/redacted-dm/step') {
+      } else if (/^\/redacted-dm\/inst\d+\/step$/.test(address)) {
         // Args: areaIndex (i), stepIndex (i), isRedacted (i)
         const { nextOffset: o2 } = readOSCString(buf, nextOffset) // skip type tag
         const areaIdx    = buf.readInt32BE(o2)
         const stepIdx    = buf.readInt32BE(o2 + 4)
         const isRedacted = buf.readInt32BE(o2 + 8)
+        const inst = address.match(/inst\d+/)?.[0] ?? '?'
         console.log(
-          `[step]    area=${areaIdx}  step=${stepIdx}  redacted=${isRedacted ? 'yes' : 'no'}`
+          `[step]    ${inst} area=${areaIdx}  step=${stepIdx}  redacted=${isRedacted ? 'yes' : 'no'}`
         )
       } else {
         console.log(`[OSC] ${address} (${buf.length} bytes)`)

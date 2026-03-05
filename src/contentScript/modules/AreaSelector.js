@@ -1,4 +1,5 @@
 const INSTRUMENTS = ['kick', 'snare', 'hihat', 'openhat', 'crash']
+const REMOTE_INSTRUMENTS = ['inst1', 'inst2', 'inst3', 'inst4']
 
 export class AreaSelector {
   constructor(onAreaSelected) {
@@ -10,15 +11,23 @@ export class AreaSelector {
   }
 
   /** Switch between browser and remote modes.
-   *  In browser mode instrument pills are interactive.
-   *  In remote mode pills are hidden (instrument is irrelevant for OSC). */
+   *  In both modes instrument pills are visible and clickable.
+   *  Browser: kick, snare, hihat, etc.  Remote: inst1, inst2, inst3, inst4 */
   setMode(mode) {
     this.mode = mode
     this.selectedAreas.forEach(areaData => {
       if (areaData.pill) {
-        areaData.pill.style.display = mode === 'browser' ? '' : 'none'
+        areaData.pill.style.display = ''
+        areaData.pill.textContent = this._getPillLabel(areaData)
       }
     })
+  }
+
+  _getPillLabel(areaData) {
+    const val = this.mode === 'remote'
+      ? (areaData.remoteInstrument ?? REMOTE_INSTRUMENTS[0])
+      : areaData.instrument
+    return val.toUpperCase()
   }
 
   startSelection() {
@@ -111,8 +120,9 @@ export class AreaSelector {
           anchorElement: anchorElement,
           viewportX: rect.left,
           viewportY: rect.top,
-          instrument: INSTRUMENTS[0], // default instrument
-          pill: null,                 // set in createAreaBorder
+          instrument: INSTRUMENTS[0],           // browser mode: kick, snare, etc.
+          remoteInstrument: REMOTE_INSTRUMENTS[0], // remote mode: inst1, inst2, etc.
+          pill: null,                           // set in createAreaBorder
         }
 
         // Add to selected areas array
@@ -186,7 +196,7 @@ export class AreaSelector {
     // ── Instrument pill (sibling of border — NOT a child — so pointer-events work) ──
     const pill = document.createElement('button')
     pill.className = 'area-instrument-pill'
-    pill.textContent = areaData.instrument.toUpperCase()
+    pill.textContent = this._getPillLabel(areaData)
     pill.title = 'Click to change instrument'
 
     // Position pill centred above the top edge of the border
@@ -196,14 +206,16 @@ export class AreaSelector {
     pill.style.transform = 'translate(-50%, -100%)'
     pill.style.zIndex = '999998'
 
-    // Only show in browser mode
-    pill.style.display = this.mode === 'browser' ? '' : 'none'
-
     pill.addEventListener('click', (e) => {
       e.stopPropagation()
-      const idx = INSTRUMENTS.indexOf(areaData.instrument)
-      areaData.instrument = INSTRUMENTS[(idx + 1) % INSTRUMENTS.length]
-      pill.textContent = areaData.instrument.toUpperCase()
+      if (this.mode === 'remote') {
+        const idx = REMOTE_INSTRUMENTS.indexOf(areaData.remoteInstrument)
+        areaData.remoteInstrument = REMOTE_INSTRUMENTS[(idx + 1) % REMOTE_INSTRUMENTS.length]
+      } else {
+        const idx = INSTRUMENTS.indexOf(areaData.instrument)
+        areaData.instrument = INSTRUMENTS[(idx + 1) % INSTRUMENTS.length]
+      }
+      pill.textContent = this._getPillLabel(areaData)
     })
 
     areaData.pill = pill

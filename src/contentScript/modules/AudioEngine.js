@@ -53,12 +53,13 @@ export class AudioEngine {
   // ─── Playback ─────────────────────────────────────────────────────────────
 
   /**
-   * Called on every sequencer step — sends /redacted-dm/step in remote mode.
+   * Called on every sequencer step — sends /redacted-dm/inst{N}/step in remote mode.
    * In browser mode this is a no-op (browser has no concept of a silent tick).
+   * @param {string} [oscInst]  instrument for OSC path (inst1, inst2, etc.) when in remote mode
    */
-  playStep(areaIndex, stepIndex, isRedacted) {
+  playStep(areaIndex, stepIndex, isRedacted, oscInst = null) {
     if (this.mode === 'remote') {
-      this.oscClient.sendStep(areaIndex, stepIndex, isRedacted)
+      this.oscClient.sendStep(areaIndex, stepIndex, isRedacted, oscInst)
     }
     // browser mode: visual border already handled by Sequencer; no audio for plain steps
   }
@@ -74,7 +75,8 @@ export class AudioEngine {
    */
   playDrumSound(wordIndex, areaIndex = 0, instrument = null) {
     if (this.mode === 'remote') {
-      this.oscClient.sendTrigger(areaIndex, wordIndex, 1.0)
+      // instrument here is the OSC inst (inst1, inst2, etc.) from the area's remoteInstrument
+      this.oscClient.sendTrigger(areaIndex, wordIndex, 1.0, instrument)
       return
     }
 

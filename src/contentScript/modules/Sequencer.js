@@ -177,7 +177,8 @@ export class Sequencer {
         : highlightedWords
 
       // Always notify the audio engine of the step (used for OSC /step in remote mode)
-      this.audioEngine.playStep(areaIndex, step, textEl.isRedacted)
+      const oscInst = this.audioEngine.getMode() === 'remote' ? selectedArea.remoteInstrument : null
+      this.audioEngine.playStep(areaIndex, step, textEl.isRedacted, oscInst)
 
       // If this text is redacted, also fire the trigger sound / OSC message
       if (textEl.isRedacted) {
@@ -205,7 +206,8 @@ export class Sequencer {
         })
         
         if (redactedIndex >= 0) {
-          this.audioEngine.playDrumSound(redactedIndex + areaIndex, areaIndex, selectedArea.instrument)
+          const inst = this.audioEngine.getMode() === 'remote' ? selectedArea.remoteInstrument : selectedArea.instrument
+          this.audioEngine.playDrumSound(redactedIndex + areaIndex, areaIndex, inst)
         }
       }
 
