@@ -74,27 +74,27 @@ export class TextHighlighter {
       return
     }
 
-    const rect = range.getBoundingClientRect()
-    
-    // Check if selection is valid
-    if (rect.width === 0 && rect.height === 0) return
+    // Cross-block ranges (spanning two paragraphs) can produce a zero
+    // getBoundingClientRect() in Chrome, so we use getClientRects() which
+    // returns one rect per visible line box and is always reliable.
+    const clientRects = Array.from(range.getClientRects()).filter(r => r.width > 0 && r.height > 0)
+    if (clientRects.length === 0) return
 
-    // Check if selection overlaps with any of the selected areas
-    const selectionCenterX = rect.left + rect.width / 2
-    const selectionCenterY = rect.top + rect.height / 2
-    
+    // The selection is "in" an area when at least one of its line rects has
+    // its centre inside that area — important for cross-line selections where
+    // the bounding-rect centre would be in the gap between two lines.
     const isInAnyArea = selectedAreas.some(selectedArea => {
       const anchorRect = selectedArea.anchorElement.getBoundingClientRect()
-      // Convert viewport coordinates to relative coordinates
-      const relativeX = selectionCenterX - anchorRect.left
-      const relativeY = selectionCenterY - anchorRect.top
-      
-      return (
-        relativeX >= selectedArea.x &&
-        relativeY >= selectedArea.y &&
-        relativeX <= selectedArea.x + selectedArea.width &&
-        relativeY <= selectedArea.y + selectedArea.height
-      )
+      return clientRects.some(lineRect => {
+        const relativeX = lineRect.left + lineRect.width  / 2 - anchorRect.left
+        const relativeY = lineRect.top  + lineRect.height / 2 - anchorRect.top
+        return (
+          relativeX >= selectedArea.x &&
+          relativeY >= selectedArea.y &&
+          relativeX <= selectedArea.x + selectedArea.width &&
+          relativeY <= selectedArea.y + selectedArea.height
+        )
+      })
     })
     
     if (isInAnyArea) {
@@ -238,165 +238,158 @@ export class TextHighlighter {
       const rect = range.getBoundingClientRect()
       return this.highlightedWords.some(w => {
         try {
-          const wRect = w.element.getBoundingClientRect()
-          const overlapX = Math.max(0, Math.min(rect.right, wRect.right) - Math.max(rect.left, wRect.left))
-          const overlapY = Math.max(0, Math.min(rect.bottom, wRect.bottom) - Math.max(rect.top, wRect.top))
-          const overlapArea = overlapX * overlapY
-          const rectArea = rect.width * rect.height
-          return overlapArea > rectArea * 0.3 // 30% overlap threshold
-        } catch (e) {
+          // Check each segment individually to avoid false positives from multi-line
+          // bounding rects that would cover the entire area between two wrapped lines.
+          const segments = w.segments ?? [w.element]
+          return segments.some(el => {
+            try {
+              const elRect = el.getBoundingClientRect()
+              const overlapX = Math.max(0, Math.min(rect.right, elRect.right) - Math.max(rect.left, elRect.left))
+              const overlapY = Math.max(0, Math.min(rect.bottom, elRect.bottom) - Math.max(rect.top, elRect.top))
+              return overlapX * overlapY > rect.width * rect.height * 0.3
+            } catch {
+              return false
+            }
+          })
+        } catch {
           return false
         }
       })
-    } catch (e) {
+    } catch {
       return false
     }
   }
 
   addHighlightedWord(text, range) {
-    // Check if already redacted
     if (this.isAlreadyRedacted(range)) return
+    if (range.collapsed) return
 
-    // Create highlight
-    const span = document.createElement('span')
-    span.className = 'highlighted-text'
-    span.setAttribute('data-word-index', this.highlightedWords.length)
+    const wordIndex = this.highlightedWords.length
 
     try {
-      // Check if range is collapsed or invalid
-      if (range.collapsed) return
-      
       const startContainer = range.startContainer
-      const endContainer = range.endContainer
-      const startOffset = range.startOffset
-      const endOffset = range.endOffset
-      
-      // Case 1: Range is within a single text node (most common)
+      const endContainer   = range.endContainer
+      const startOffset    = range.startOffset
+      const endOffset      = range.endOffset
+
+      let segments = []
+
+      // Case 1: range is within a single text node (most common)
       if (startContainer === endContainer && startContainer.nodeType === Node.TEXT_NODE) {
-        const textNode = startContainer
-        const parentElement = textNode.parentNode
-        
-        if (!parentElement) return
-        
-        const beforeText = textNode.nodeValue.substring(0, startOffset)
-        const selectedText = textNode.nodeValue.substring(startOffset, endOffset)
-        const afterText = textNode.nodeValue.substring(endOffset)
-        
-        // Create new nodes
-        const beforeNode = beforeText ? document.createTextNode(beforeText) : null
-        span.textContent = selectedText
-        const afterNode = afterText ? document.createTextNode(afterText) : null
-        
-        // Replace the text node
+        const span = document.createElement('span')
+        span.className = 'highlighted-text'
+        span.setAttribute('data-word-index', wordIndex)
+
+        const parent = startContainer.parentNode
+        if (!parent) return
+
+        const nodeValue    = startContainer.nodeValue
+        const beforeNode   = nodeValue.substring(0, startOffset) ? document.createTextNode(nodeValue.substring(0, startOffset)) : null
+        span.textContent   = nodeValue.substring(startOffset, endOffset)
+        const afterNode    = nodeValue.substring(endOffset)      ? document.createTextNode(nodeValue.substring(endOffset))      : null
+
         if (afterNode) {
-          parentElement.replaceChild(afterNode, textNode)
-          parentElement.insertBefore(span, afterNode)
+          parent.replaceChild(afterNode, startContainer)
+          parent.insertBefore(span, afterNode)
         } else {
-          parentElement.replaceChild(span, textNode)
+          parent.replaceChild(span, startContainer)
         }
-        
-        if (beforeNode) {
-          parentElement.insertBefore(beforeNode, span)
-        }
-      }
-      // Case 2: Try surroundContents (works for simple element selections)
-      else {
-        try {
-          range.surroundContents(span)
-        } catch (e) {
-          // Case 3: Extract and insert
+        if (beforeNode) parent.insertBefore(beforeNode, span)
+
+        segments = [span]
+      } else {
+        // Multi-node range (cross-line / cross-element): wrap each text node
+        // individually to avoid DOM corruption from extractContents().
+        segments = this._wrapMultiNodeRange(range, wordIndex)
+
+        if (segments.length === 0) {
+          // Last-resort: try surroundContents for degenerate edge cases
           try {
-            const contents = range.extractContents()
-            span.appendChild(contents)
-            range.insertNode(span)
-          } catch (e2) {
-            // Case 4: Manual reconstruction for complex ranges
-            try {
-              // Get all text nodes in range
-              const textNodes = []
-              const walker = document.createTreeWalker(
-                range.commonAncestorContainer,
-                NodeFilter.SHOW_TEXT,
-                {
-                  acceptNode: (node) => {
-                    return range.intersectsNode(node) ? NodeFilter.FILTER_ACCEPT : NodeFilter.FILTER_REJECT
-                  }
-                },
-                false
-              )
-              
-              let node
-              while (node = walker.nextNode()) {
-                textNodes.push(node)
-              }
-              
-              if (textNodes.length === 0) {
-                console.warn('No text nodes found in range')
-                return
-              }
-              
-              // For the first text node, get text from startOffset
-              // For the last text node, get text up to endOffset
-              // For middle nodes, get all text
-              
-              const fragments = []
-              textNodes.forEach((textNode, index) => {
-                const nodeText = textNode.nodeValue
-                let start = 0
-                let end = nodeText.length
-                
-                if (index === 0 && textNode === startContainer) {
-                  start = startOffset
-                }
-                if (index === textNodes.length - 1 && textNode === endContainer) {
-                  end = endOffset
-                }
-                
-                if (start < end) {
-                  fragments.push(nodeText.substring(start, end))
-                }
-              })
-              
-              span.textContent = fragments.join('')
-              
-              // Insert span at the start position
-              if (startContainer.nodeType === Node.TEXT_NODE) {
-                const parent = startContainer.parentNode
-                const beforeNode = document.createTextNode(startContainer.nodeValue.substring(0, startOffset))
-                parent.insertBefore(span, startContainer)
-                if (beforeNode.nodeValue) {
-                  parent.insertBefore(beforeNode, span)
-                }
-                startContainer.nodeValue = startContainer.nodeValue.substring(startOffset)
-              } else {
-                range.insertNode(span)
-              }
-            } catch (e3) {
-              console.warn('Could not highlight text with any method:', e3)
-              return
-            }
+            const span = document.createElement('span')
+            span.className = 'highlighted-text'
+            span.setAttribute('data-word-index', wordIndex)
+            range.surroundContents(span)
+            segments = [span]
+          } catch (e) {
+            console.warn('Could not highlight text:', e)
+            return
           }
         }
       }
+
+      this.highlightedWords.push({ text, element: segments[0], segments, index: wordIndex })
+      this.updateHighlightStatus()
+      if (this.onHighlightChange) this.onHighlightChange()
     } catch (e) {
       console.warn('Error in addHighlightedWord:', e)
-      return
+    }
+  }
+
+  /**
+   * Wrap each text node intersecting `range` with its own `.highlighted-text` span,
+   * using the same safe in-place substitution as Case 1. Returns all created spans.
+   * Collecting nodes before mutation avoids TreeWalker invalidation mid-traversal.
+   */
+  _wrapMultiNodeRange(range, wordIndex) {
+    const segments = []
+    if (range.commonAncestorContainer.nodeType === Node.TEXT_NODE) return segments
+
+    const walker = document.createTreeWalker(
+      range.commonAncestorContainer,
+      NodeFilter.SHOW_TEXT,
+      {
+        acceptNode: (node) => {
+          try {
+            return range.intersectsNode(node) ? NodeFilter.FILTER_ACCEPT : NodeFilter.FILTER_REJECT
+          } catch {
+            return NodeFilter.FILTER_REJECT
+          }
+        },
+      },
+      false
+    )
+
+    // Collect first so DOM mutations during wrapping don't confuse the walker
+    const textNodes = []
+    let node
+    while ((node = walker.nextNode())) textNodes.push(node)
+
+    for (const textNode of textNodes) {
+      const text = textNode.nodeValue
+      if (!text || text.trim().length === 0) continue
+
+      let start = 0
+      let end   = text.length
+      if (textNode === range.startContainer) start = range.startOffset
+      if (textNode === range.endContainer)   end   = range.endOffset
+      if (start >= end) continue
+
+      const selectedText = text.substring(start, end)
+      if (!selectedText.trim()) continue
+
+      const span = document.createElement('span')
+      span.className = 'highlighted-text'
+      span.setAttribute('data-word-index', wordIndex)
+
+      const parent = textNode.parentNode
+      if (!parent) continue
+
+      const beforeNode = text.substring(0, start) ? document.createTextNode(text.substring(0, start)) : null
+      span.textContent = selectedText
+      const afterNode  = text.substring(end)      ? document.createTextNode(text.substring(end))      : null
+
+      if (afterNode) {
+        parent.replaceChild(afterNode, textNode)
+        parent.insertBefore(span, afterNode)
+      } else {
+        parent.replaceChild(span, textNode)
+      }
+      if (beforeNode) parent.insertBefore(beforeNode, span)
+
+      segments.push(span)
     }
 
-    // Store the word info
-    const wordInfo = {
-      text,
-      element: span,
-      index: this.highlightedWords.length
-    }
-
-    this.highlightedWords.push(wordInfo)
-    this.updateHighlightStatus()
-    
-    // Notify callback
-    if (this.onHighlightChange) {
-      this.onHighlightChange()
-    }
+    return segments
   }
 
   updateHighlightStatus() {
@@ -413,24 +406,28 @@ export class TextHighlighter {
   undoLastRedaction() {
     if (this.highlightedWords.length === 0) return
     const last = this.highlightedWords.pop()
-    if (last.element && last.element.parentNode) {
-      const parent = last.element.parentNode
-      const textNode = document.createTextNode(last.text)
-      parent.replaceChild(textNode, last.element)
-      parent.normalize()
-    }
+    const segments = last.segments ?? [last.element]
+    segments.forEach(segment => {
+      if (segment && segment.parentNode) {
+        const parent = segment.parentNode
+        parent.replaceChild(document.createTextNode(segment.textContent), segment)
+        parent.normalize()
+      }
+    })
     this.updateHighlightStatus()
     if (this.onHighlightChange) this.onHighlightChange()
   }
 
   clearHighlights() {
     this.highlightedWords.forEach(word => {
-      if (word.element && word.element.parentNode) {
-        const parent = word.element.parentNode
-        const textNode = document.createTextNode(word.text)
-        parent.replaceChild(textNode, word.element)
-        parent.normalize()
-      }
+      const segments = word.segments ?? [word.element]
+      segments.forEach(segment => {
+        if (segment && segment.parentNode) {
+          const parent = segment.parentNode
+          parent.replaceChild(document.createTextNode(segment.textContent), segment)
+          parent.normalize()
+        }
+      })
     })
     this.highlightedWords = []
     this.updateHighlightStatus()

@@ -137,14 +137,31 @@ export class TextExtractor {
     })
   }
 
-  /** True when `word` overlaps with highlighted span `hl` (DOM containment, then rect area). */
+  /**
+   * True when `word` overlaps with highlighted phrase `hl`.
+   * For cross-line redactions `hl.segments` holds one span per line segment;
+   * we check all of them so words on line 2+ are still matched to the phrase.
+   */
   _matchesHighlight(word, wordRect, hl) {
     try {
-      if (hl.element.contains(word.element) || word.element === hl.element) return true
-      const hlRect = hl.element.getBoundingClientRect()
-      const ox = Math.max(0, Math.min(wordRect.right,  hlRect.right)  - Math.max(wordRect.left, hlRect.left))
-      const oy = Math.max(0, Math.min(wordRect.bottom, hlRect.bottom) - Math.max(wordRect.top,  hlRect.top))
-      return ox * oy > wordRect.width * wordRect.height * 0.3
+      const elements = [hl.element, ...(hl.segments ?? [])]
+      // DOM containment check — fastest, covers the common case
+      for (const el of elements) {
+        if (el.contains(word.element) || word.element === el) return true
+      }
+      // Rect-overlap fallback — handles edge cases where the word's parent element
+      // is not inside the span but still visually overlaps it
+      for (const el of elements) {
+        try {
+          const elRect = el.getBoundingClientRect()
+          const ox = Math.max(0, Math.min(wordRect.right,  elRect.right)  - Math.max(wordRect.left, elRect.left))
+          const oy = Math.max(0, Math.min(wordRect.bottom, elRect.bottom) - Math.max(wordRect.top,  elRect.top))
+          if (ox * oy > wordRect.width * wordRect.height * 0.3) return true
+        } catch {
+          // skip this element
+        }
+      }
+      return false
     } catch {
       return false
     }
@@ -188,6 +205,8 @@ export class TextExtractor {
         text:       group.map(e => e.text).join(' '),
         range:      first.range.cloneRange(),
         element:    first.element?.closest?.('.highlighted-text') ?? first.element,
+        // Carry the phrase's segment spans so the Sequencer can flash all lines
+        segments:   phrase?.segments ?? null,
         isRedacted: true,
       }
       try { merged.range.setEnd(last.range.endContainer, last.range.endOffset) } catch {}

@@ -127,29 +127,34 @@ export class Sequencer {
       }
       this.areaSteps[areaIndex] = nextStep
 
-      // Verify the element still has a visible position inside the area
+      // Verify the element still has a visible position inside the area.
+      // Cross-block ranges return zero from getBoundingClientRect() in Chrome,
+      // so fall back to getClientRects() (one rect per line box).
       try {
-        const rect = textEl.range.getBoundingClientRect()
-        if (rect.width === 0 || rect.height === 0) return
+        const lineRects = Array.from(textEl.range.getClientRects()).filter(r => r.width > 0 && r.height > 0)
+        if (lineRects.length === 0) return
 
         const anchorRect = selectedArea.anchorElement.getBoundingClientRect()
-        const relativeX = (rect.left + rect.width / 2) - anchorRect.left
-        const relativeY = (rect.top + rect.height / 2) - anchorRect.top
-        const isWithinArea = (
-          relativeX >= selectedArea.x &&
-          relativeY >= selectedArea.y &&
-          relativeX <= selectedArea.x + selectedArea.width &&
-          relativeY <= selectedArea.y + selectedArea.height
-        )
+        const isWithinArea = lineRects.some(r => {
+          const relativeX = (r.left + r.width  / 2) - anchorRect.left
+          const relativeY = (r.top  + r.height / 2) - anchorRect.top
+          return (
+            relativeX >= selectedArea.x &&
+            relativeY >= selectedArea.y &&
+            relativeX <= selectedArea.x + selectedArea.width &&
+            relativeY <= selectedArea.y + selectedArea.height
+          )
+        })
         if (!isWithinArea) return
       } catch (e) {
         return
       }
 
-      // Create highlight border around current text
+      // Create highlight border around current text — one border div per line box
+      // so cross-line phrases each get their own correctly-sized border.
       try {
-        const rect = textEl.range.getBoundingClientRect()
-        if (rect.width > 0 && rect.height > 0) {
+        const lineRects = Array.from(textEl.range.getClientRects()).filter(r => r.width > 0 && r.height > 0)
+        lineRects.forEach(rect => {
           const border = document.createElement('div')
           border.className = 'current-text-border'
           border.style.position = 'fixed'
@@ -159,11 +164,10 @@ export class Sequencer {
           border.style.height = rect.height + 'px'
           document.body.appendChild(border)
           this.currentTextBorders.push(border)
-
-          const element = textEl.element
-          if (element && element.scrollIntoView) {
-            element.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'nearest' })
-          }
+        })
+        const element = textEl.element
+        if (element && element.scrollIntoView) {
+          element.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'nearest' })
         }
       } catch (e) {
         console.warn('Could not create border for text:', e)
@@ -181,23 +185,35 @@ export class Sequencer {
       // If this text is redacted, flash glow and fire drum sound
       if (textEl.isRedacted) {
         try {
-          const el = textEl.element
-          if (el) {
-            el.classList.add('triggered')
-            this.triggeredElements.push(el)
-            const glowDuration = Math.max(120, (60 / this.bpm) * 1000 / 4 * 0.8)
-            setTimeout(() => { el.classList.remove('triggered') }, glowDuration)
-          }
+          const glowDuration = Math.max(120, (60 / this.bpm) * 1000 / 4 * 0.8)
 
+          // For cross-line phrases, textEl.segments holds one span per line;
+          // flash all of them so every segment turns green, not just the first.
+          const segmentsToFlash = textEl.segments ?? (textEl.element ? [textEl.element] : [])
+          segmentsToFlash.forEach(el => {
+            if (el) {
+              el.classList.add('triggered')
+              this.triggeredElements.push(el)
+              setTimeout(() => { el.classList.remove('triggered') }, glowDuration)
+            }
+          })
+
+          // Match this beat to a highlighted-word entry for drum-sound lookup.
+          // Use getClientRects() so cross-block ranges are handled correctly.
+          const textLineRects = Array.from(textEl.range.getClientRects()).filter(r => r.width > 0 && r.height > 0)
           const redactedIndex = liveHighlightedWords.findIndex(redacted => {
-            const redactedRect = redacted.element.getBoundingClientRect()
-            const textRect = textEl.range.getBoundingClientRect()
-            return !(
-              textRect.right  < redactedRect.left  ||
-              textRect.left   > redactedRect.right ||
-              textRect.bottom < redactedRect.top   ||
-              textRect.top    > redactedRect.bottom
-            )
+            const segments = redacted.segments ?? [redacted.element]
+            return segments.some(seg => {
+              try {
+                const segRect = seg.getBoundingClientRect()
+                return textLineRects.some(textRect => !(
+                  textRect.right  < segRect.left  ||
+                  textRect.left   > segRect.right ||
+                  textRect.bottom < segRect.top   ||
+                  textRect.top    > segRect.bottom
+                ))
+              } catch { return false }
+            })
           })
 
           if (redactedIndex >= 0) {
