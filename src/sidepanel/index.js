@@ -71,13 +71,6 @@ document.addEventListener('DOMContentLoaded', () => {
           <div class="status-line" id="area-status">0 areas selected</div>
         </div>
 
-        <!-- Redact Mode -->
-        <div class="section">
-          <div class="section-label">Redact</div>
-          <button class="btn" id="btn-toggle-redact">Enable Redact</button>
-          <div class="status-line" id="redact-status">0 phrases redacted</div>
-        </div>
-
         <!-- Redact Type -->
         <div class="section">
           <div class="section-label">Redact Type</div>
@@ -85,6 +78,11 @@ document.addEventListener('DOMContentLoaded', () => {
             <button class="btn btn-full" id="redact-word" data-type="word">Word</button>
             <button class="btn btn-full active" id="redact-free" data-type="free">Free</button>
           </div>
+          <div class="section-label">Edit</div>
+          <div class="btn-row">
+            <button class="btn" id="btn-undo-redact" title="Undo last redaction">Undo</button>
+          </div>
+          <div class="status-line" id="redact-status">0 phrases redacted</div>
         </div>
 
         <!-- BPM -->
@@ -150,17 +148,13 @@ document.addEventListener('DOMContentLoaded', () => {
       areaStatus.textContent = n === 0 ? 'No areas selected' : `${n} area${n !== 1 ? 's' : ''} selected`
     }
 
-    // Redact toggle
-    const redactBtn = document.getElementById('btn-toggle-redact')
-    if (redactBtn) {
-      redactBtn.textContent = state.highlightEnabled ? 'Disable Redact' : 'Enable Redact'
-      redactBtn.classList.toggle('active', state.highlightEnabled)
-    }
     const redactStatus = document.getElementById('redact-status')
     if (redactStatus) {
       const n = state.highlightCount || 0
       redactStatus.textContent = `${n} phrase${n !== 1 ? 's' : ''} redacted`
     }
+    const undoBtn = document.getElementById('btn-undo-redact')
+    if (undoBtn) undoBtn.disabled = (state.highlightCount || 0) === 0
 
     // Redact type
     document.getElementById('redact-word')?.classList.toggle('active', state.redactMode === 'word')
@@ -224,7 +218,7 @@ document.addEventListener('DOMContentLoaded', () => {
     if (res?.state) {
       applyState(res.state)
     } else {
-      applyState({ bpm: 120, speed: 1, outputMode: 'browser', oscConnected: false, oscStatus: '', highlightEnabled: false, areaCount: 0, highlightCount: 0, redactMode: 'free', isPlaying: false })
+      applyState({ bpm: 120, speed: 1, outputMode: 'browser', oscConnected: false, oscStatus: '', areaCount: 0, highlightCount: 0, redactMode: 'free', isPlaying: false })
     }
   }
 
@@ -247,11 +241,11 @@ document.addEventListener('DOMContentLoaded', () => {
   document.getElementById('btn-select-area').addEventListener('click', () => sendCommand(CMD.SELECT_AREA))
   document.getElementById('btn-clear-areas').addEventListener('click', () => sendCommand(CMD.CLEAR_AREAS))
 
-  // Redact
-  document.getElementById('btn-toggle-redact').addEventListener('click', () => sendCommand(CMD.TOGGLE_REDACT))
+  // Redact type
   document.querySelectorAll('[data-type]').forEach(btn => {
     btn.addEventListener('click', () => sendCommand(CMD.SET_REDACT_TYPE, { value: btn.dataset.type }))
   })
+  document.getElementById('btn-undo-redact').addEventListener('click', () => sendCommand(CMD.UNDO_REDACT))
 
   // BPM
   document.getElementById('btn-bpm-dec').addEventListener('click', () => {

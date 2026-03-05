@@ -44,17 +44,17 @@ export class UI {
           <div class="status-text" id="area-status">No areas selected</div>
         </div>
         <div class="control-group">
-          <label>Redact Mode</label>
-          <button class="drum-machine-button" id="highlight-toggle-btn">Enable Redact</button>
-          <div class="status-text" id="highlight-status">0 phrases redacted</div>
-        </div>
-        <div class="control-group">
           <label>Redact Type</label>
           <div class="control-row">
             <button class="drum-machine-button redact-mode-btn" id="redact-mode-word" data-mode="word">Word</button>
             <button class="drum-machine-button redact-mode-btn active" id="redact-mode-free" data-mode="free">Free</button>
           </div>
+          <label>Edit</label>
+          <div class="control-row">
+            <button class="drum-machine-button" id="undo-redact-btn" title="Undo last redaction">Undo</button>
+          </div>
           <div class="status-text" id="redact-mode-status">Free highlight mode</div>
+          <div class="status-text" id="highlight-status">0 phrases redacted</div>
         </div>
         <div class="control-group">
           <label>BPM</label>
@@ -81,9 +81,8 @@ export class UI {
         <div class="info-text">
           Instructions:<br>
           1. Click "Select Area" and drag to define the rectangle<br>
-          2. Enable "Redact Mode" toggle<br>
-          3. Select text/phrases in the area to redact them<br>
-          4. Adjust BPM and click Play
+          2. Select text/phrases in the area to redact them<br>
+          3. Adjust BPM and click Play
         </div>
       </div>
     `
@@ -159,12 +158,6 @@ export class UI {
       areaStatus.textContent = n === 0 ? 'No areas selected' : `${n} area${n !== 1 ? 's' : ''} selected`
     }
 
-    // Redact toggle
-    const highlightBtn = document.getElementById('highlight-toggle-btn')
-    if (highlightBtn) {
-      highlightBtn.textContent = state.highlightEnabled ? 'Disable Redact' : 'Enable Redact'
-      highlightBtn.classList.toggle('playing', state.highlightEnabled)
-    }
     const highlightStatus = document.getElementById('highlight-status')
     if (highlightStatus) {
       const n = state.highlightCount || 0
@@ -175,8 +168,10 @@ export class UI {
     const wordBtn = document.getElementById('redact-mode-word')
     const freeBtn = document.getElementById('redact-mode-free')
     const redactModeStatus = document.getElementById('redact-mode-status')
+    const undoBtn = document.getElementById('undo-redact-btn')
     if (wordBtn) wordBtn.classList.toggle('active', state.redactMode === 'word')
     if (freeBtn) freeBtn.classList.toggle('active', state.redactMode === 'free')
+    if (undoBtn) undoBtn.disabled = (state.highlightCount || 0) === 0
     if (redactModeStatus) {
       redactModeStatus.textContent = state.redactMode === 'word'
         ? 'Word mode — redacts individual words'

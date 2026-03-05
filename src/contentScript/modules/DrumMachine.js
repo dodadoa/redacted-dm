@@ -10,7 +10,7 @@ import { UI } from './UI.js'
 
 export class DrumMachine {
   constructor() {
-    this.highlightModeEnabled = false
+    this.highlightModeEnabled = true
     this._oscStatus = 'Not connected'
 
     this.ui = new UI()
@@ -52,9 +52,9 @@ export class DrumMachine {
     on('drum-machine-close', () => this.hideOverlay())
     on('select-area-btn',    () => this.areaSelector.startSelection())
     on('clear-areas-btn',    () => this.clearAllAreas())
-    on('highlight-toggle-btn', () => this.toggleHighlightMode())
     on('redact-mode-word',   () => { this.textHighlighter.setRedactMode('word');  this.broadcastState() })
     on('redact-mode-free',   () => { this.textHighlighter.setRedactMode('free');  this.broadcastState() })
+    on('undo-redact-btn',    () => { this.textHighlighter.undoLastRedaction(); this.broadcastState() })
     on('play-btn',           () => this.play())
     on('stop-btn',           () => this.stop())
     on('bpm-decrease',       () => { this.sequencer.setBPM(this.sequencer.getBPM() - 5); this.broadcastState() })
@@ -99,7 +99,7 @@ export class DrumMachine {
   setupPageListeners() {
     let selectionTimeout = null
     document.addEventListener('mouseup', () => {
-      if (this.highlightModeEnabled && !this.areaSelector.isSelecting) {
+      if (!this.areaSelector.isSelecting) {
         if (selectionTimeout) clearTimeout(selectionTimeout)
         selectionTimeout = setTimeout(() => {
           this.handleTextSelection()
@@ -107,6 +107,35 @@ export class DrumMachine {
         }, 50)
       }
     })
+
+    // Double-click a word to redact it (browser selects word on dblclick)
+    document.addEventListener('dblclick', () => {
+      if (!this.areaSelector.isSelecting) {
+        this.handleTextSelection()
+      }
+    })
+
+    // Single-click to redact word, and prevent link navigation inside selected areas
+    document.addEventListener('click', (e) => {
+      const areas = this.areaSelector.getSelectedAreas()
+      if (areas.length === 0) return
+      const x = e.clientX
+      const y = e.clientY
+      const inArea = areas.some(a => {
+        const anchor = a.anchorElement || document.body
+        const r = anchor.getBoundingClientRect()
+        const left = r.left + a.x
+        const top = r.top + a.y
+        return x >= left && x <= left + a.width && y >= top && y <= top + a.height
+      })
+      if (!inArea) return
+
+      this.textHighlighter.redactWordAtPoint(x, y, areas)
+      if (e.target.closest('a')) {
+        e.preventDefault()
+        e.stopPropagation()
+      }
+    }, true)
   }
 
   // ─── Command handler (called from content script message listener) ────────
@@ -133,11 +162,12 @@ export class DrumMachine {
         this.sequencer.setSpeedMultiplier(Number(data.value) || 1)
         this.broadcastState()
         break
-      case CMD.TOGGLE_REDACT:
-        this.toggleHighlightMode()
-        break
       case CMD.SET_REDACT_TYPE:
         this.textHighlighter.setRedactMode(data.value)
+        this.broadcastState()
+        break
+      case CMD.UNDO_REDACT:
+        this.textHighlighter.undoLastRedaction()
         this.broadcastState()
         break
       case CMD.SET_OUTPUT_MODE:
@@ -204,15 +234,6 @@ export class DrumMachine {
 
   // ─── Core actions ─────────────────────────────────────────────────────────
 
-  toggleHighlightMode() {
-    if (!this.highlightModeEnabled && this.areaSelector.getSelectedAreas().length === 0) {
-      alert('Please select at least one area first!')
-      return
-    }
-    this.highlightModeEnabled = !this.highlightModeEnabled
-    this.broadcastState()
-  }
-
   clearAllAreas() {
     this.stop()
     this.textHighlighter.clearHighlights()
@@ -230,7 +251,7 @@ export class DrumMachine {
 
   handleTextSelection() {
     const selectedAreas = this.areaSelector.getSelectedAreas()
-    if (selectedAreas.length === 0 || !this.highlightModeEnabled) return
+    if (selectedAreas.length === 0) return
     this.textHighlighter.handleTextSelection(selectedAreas)
   }
 

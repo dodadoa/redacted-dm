@@ -13,6 +13,53 @@ export class TextHighlighter {
     return this.redactMode
   }
 
+  /** Redact the word at viewport position (x, y) if inside a selected area. Returns true if redacted. */
+  redactWordAtPoint(clientX, clientY, selectedAreas) {
+    if (selectedAreas.length === 0) return false
+
+    const inArea = selectedAreas.some(a => {
+      const anchor = a.anchorElement || document.body
+      const r = anchor.getBoundingClientRect()
+      const left = r.left + a.x
+      const top = r.top + a.y
+      return clientX >= left && clientX <= left + a.width && clientY >= top && clientY <= top + a.height
+    })
+    if (!inArea) return false
+
+    let textNode, offset
+    if (document.caretRangeFromPoint) {
+      const range = document.caretRangeFromPoint(clientX, clientY)
+      if (!range) return false
+      textNode = range.startContainer
+      offset = range.startOffset
+    } else if (document.caretPositionFromPoint) {
+      const pos = document.caretPositionFromPoint(clientX, clientY)
+      if (!pos) return false
+      textNode = pos.offsetNode
+      offset = pos.offset
+    } else {
+      return false
+    }
+    if (!textNode || textNode.nodeType !== Node.TEXT_NODE) return false
+
+    const text = textNode.nodeValue
+    let wordStart = offset
+    while (wordStart > 0 && /\S/.test(text[wordStart - 1])) wordStart--
+    let wordEnd = offset
+    while (wordEnd < text.length && /\S/.test(text[wordEnd])) wordEnd++
+    if (wordStart >= wordEnd) return false
+
+    const wordText = text.substring(wordStart, wordEnd)
+    const wordRange = document.createRange()
+    wordRange.setStart(textNode, wordStart)
+    wordRange.setEnd(textNode, wordEnd)
+
+    if (this.isAlreadyRedacted(wordRange)) return false
+
+    this.addHighlightedWord(wordText, wordRange)
+    return true
+  }
+
   handleTextSelection(selectedAreas) {
     if (selectedAreas.length === 0) return
 
@@ -361,6 +408,19 @@ export class TextHighlighter {
 
   getHighlightedWords() {
     return this.highlightedWords
+  }
+
+  undoLastRedaction() {
+    if (this.highlightedWords.length === 0) return
+    const last = this.highlightedWords.pop()
+    if (last.element && last.element.parentNode) {
+      const parent = last.element.parentNode
+      const textNode = document.createTextNode(last.text)
+      parent.replaceChild(textNode, last.element)
+      parent.normalize()
+    }
+    this.updateHighlightStatus()
+    if (this.onHighlightChange) this.onHighlightChange()
   }
 
   clearHighlights() {
