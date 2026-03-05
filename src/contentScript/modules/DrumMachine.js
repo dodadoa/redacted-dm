@@ -117,6 +117,7 @@ export class DrumMachine {
 
     // Single-click to redact word, and prevent link navigation inside selected areas
     document.addEventListener('click', (e) => {
+      if (this.areaSelector._justFinishedSelecting) return
       const areas = this.areaSelector.getSelectedAreas()
       if (areas.length === 0) return
       const x = e.clientX
@@ -129,6 +130,10 @@ export class DrumMachine {
         return x >= left && x <= left + a.width && y >= top && y <= top + a.height
       })
       if (!inArea) return
+
+      // If the user just finished a drag-selection, let handleTextSelection deal with it
+      const sel = window.getSelection()
+      if (sel && !sel.isCollapsed) return
 
       this.textHighlighter.redactWordAtPoint(x, y, areas)
       if (e.target.closest('a')) {

@@ -4,6 +4,7 @@ const REMOTE_INSTRUMENTS = ['inst1', 'inst2', 'inst3', 'inst4']
 export class AreaSelector {
   constructor(onAreaSelected, onAreaRemoved) {
     this.isSelecting = false
+    this._justFinishedSelecting = false
     this.selectedAreas = []
     this.areaBorderOverlays = [] // tracks borders, pills, headers, close buttons for clearAll()
     this.onAreaSelected = onAreaSelected
@@ -134,6 +135,8 @@ export class AreaSelector {
 
         selector.style.display = 'none'
         this.isSelecting = false
+        this._justFinishedSelecting = true
+        setTimeout(() => { this._justFinishedSelecting = false }, 100)
         if (btn) {
           btn.classList.remove('active')
         }
