@@ -40,6 +40,7 @@ export class UI {
             <button class="drum-machine-button" id="select-area-btn">Select Area</button>
             <button class="drum-machine-button" id="clear-areas-btn">Clear All</button>
           </div>
+          <div class="status-text area-select-hint" id="area-select-hint" style="display: none;">Drag over the content you want to perform with</div>
           <div class="status-text" id="area-status">No areas selected</div>
         </div>
         <div class="control-group">

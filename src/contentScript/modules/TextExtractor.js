@@ -3,7 +3,7 @@ export class TextExtractor {
     this.allTextElements = []
   }
 
-  extractAllTextElements(selectedAreas, highlightedWords) {
+  extractAllTextElements(selectedAreas, highlightedWords, redactMode = 'word') {
     if (selectedAreas.length === 0) {
       this.allTextElements = []
       return []
@@ -26,6 +26,11 @@ export class TextExtractor {
             
             const parent = node.parentElement
             if (!parent) return NodeFilter.FILTER_REJECT
+            
+            // Exclude area UI (instrument pill, header, border) — they should not be sequencer beats
+            if (parent.closest?.('.area-instrument-pill, .area-selector-header, .area-border-overlay, .drum-machine-overlay')) {
+              return NodeFilter.FILTER_REJECT
+            }
             
             // Get position relative to anchor element
             const anchorRect = selectedArea.anchorElement.getBoundingClientRect()
@@ -99,6 +104,13 @@ export class TextExtractor {
                 wordRelativeTop > (selectedArea.y + selectedArea.height)
               )
               
+              // Exclude area UI (instrument pill, header, etc.)
+              const parentEl = node.parentElement
+              if (parentEl?.closest?.('.area-instrument-pill, .area-selector-header, .area-border-overlay, .drum-machine-overlay')) {
+                offset += part.length
+                return
+              }
+              
               // Only include if word is within or significantly overlaps the area
               if (isWithinArea || (overlapsArea && wordRect.width > 0 && wordRect.height > 0)) {
                 textElements.push({
@@ -132,137 +144,90 @@ export class TextExtractor {
       }
     })
 
-    // Mark redacted elements and merge adjacent redacted ones
-    const mergedElements = []
-    let currentRedactedGroup = null
-    
+    // Mark redacted elements. In 'free' mode, merge all words in same phrase into one beat (even if word redactions are between them).
+    const resultElements = []
+    const outputPhrases = new Set() // track which free phrases we've already output
+
     textElements.forEach((textEl, index) => {
       try {
         const textRect = textEl.range.getBoundingClientRect()
-        const isRedacted = highlightedWords.some(redacted => {
+        const matches = []
+        highlightedWords.forEach(redacted => {
           try {
-            const redactedRect = redacted.element.getBoundingClientRect()
-            // Check if they overlap significantly
-            const overlapX = Math.max(0, Math.min(textRect.right, redactedRect.right) - Math.max(textRect.left, redactedRect.left))
-            const overlapY = Math.max(0, Math.min(textRect.bottom, redactedRect.bottom) - Math.max(textRect.top, redactedRect.top))
-            const overlapArea = overlapX * overlapY
-            const textArea = textRect.width * textRect.height
-            return overlapArea > textArea * 0.3 // 30% overlap threshold
-          } catch (e) {
-            return false
-          }
+            let matchesEl = false
+            if (redacted.element.contains(textEl.element) || textEl.element === redacted.element) {
+              matchesEl = true
+            } else {
+              const redactedRect = redacted.element.getBoundingClientRect()
+              const overlapX = Math.max(0, Math.min(textRect.right, redactedRect.right) - Math.max(textRect.left, redactedRect.left))
+              const overlapY = Math.max(0, Math.min(textRect.bottom, redactedRect.bottom) - Math.max(textRect.top, redactedRect.top))
+              const overlapArea = overlapX * overlapY
+              const textArea = textRect.width * textRect.height
+              if (overlapArea > textArea * 0.3) matchesEl = true
+            }
+            if (matchesEl) matches.push(redacted)
+          } catch (e) {}
         })
-        textEl.isRedacted = isRedacted
-        
-        // Merge adjacent redacted elements
-        if (isRedacted) {
-          if (currentRedactedGroup === null) {
-            // Start a new group
-            currentRedactedGroup = {
-              text: textEl.text,
-              range: textEl.range.cloneRange(),
-              element: textEl.element,
-              isRedacted: true,
-              startIndex: index,
-              elements: [textEl]
-            }
-          } else {
-            // Check if this element is adjacent to the current group
-            try {
-              const groupRect = currentRedactedGroup.range.getBoundingClientRect()
-              const currentRect = textEl.range.getBoundingClientRect()
-              
-              // Check if they're on the same line and adjacent (within 10px horizontally, 5px vertically)
-              const sameLine = Math.abs(groupRect.top - currentRect.top) < 5
-              const horizontalGap = Math.min(
-                Math.abs(groupRect.right - currentRect.left),
-                Math.abs(currentRect.right - groupRect.left)
-              )
-              const adjacent = sameLine && horizontalGap < 10
-              
-              if (adjacent) {
-                // Merge into current group
-                try {
-                  // Extend the range to include this element
-                  const groupStart = groupRect.left
-                  const groupEnd = groupRect.right
-                  const currentStart = currentRect.left
-                  const currentEnd = currentRect.right
-                  
-                  if (currentStart < groupStart) {
-                    currentRedactedGroup.range.setStart(textEl.range.startContainer, textEl.range.startOffset)
-                  }
-                  if (currentEnd > groupEnd) {
-                    currentRedactedGroup.range.setEnd(textEl.range.endContainer, textEl.range.endOffset)
-                  }
-                  
-                  // Add space if needed
-                  if (currentStart > groupEnd) {
-                    currentRedactedGroup.text += ' ' + textEl.text
-                  } else {
-                    currentRedactedGroup.text += textEl.text
-                  }
-                  
-                  currentRedactedGroup.elements.push(textEl)
-                } catch (e) {
-                  // If range merge fails, just add to group text
-                  currentRedactedGroup.text += ' ' + textEl.text
-                  currentRedactedGroup.elements.push(textEl)
-                }
-              } else {
-                // Not adjacent, save current group and start new one
-                mergedElements.push(currentRedactedGroup)
-                currentRedactedGroup = {
-                  text: textEl.text,
-                  range: textEl.range.cloneRange(),
-                  element: textEl.element,
-                  isRedacted: true,
-                  startIndex: index,
-                  elements: [textEl]
-                }
-              }
-            } catch (e) {
-              // If comparison fails, save current group and start new one
-              if (currentRedactedGroup) {
-                mergedElements.push(currentRedactedGroup)
-              }
-              currentRedactedGroup = {
-                text: textEl.text,
-                range: textEl.range.cloneRange(),
-                element: textEl.element,
-                isRedacted: true,
-                startIndex: index,
-                elements: [textEl]
-              }
-            }
-          }
-        } else {
-          // Not redacted
-          if (currentRedactedGroup !== null) {
-            // Save the current group
-            mergedElements.push(currentRedactedGroup)
-            currentRedactedGroup = null
-          }
-          // Add non-redacted element
-          mergedElements.push(textEl)
+        // Prefer outermost match: when word span is nested inside free span, use free so phrase stays grouped
+        let matchedRedacted = null
+        if (matches.length > 0) {
+          matchedRedacted = matches.find(r => !matches.some(other => other !== r && other.element.contains(r.element)))
+            || matches[0]
         }
+        textEl.isRedacted = matches.length > 0
+        textEl.matchedRedacted = matchedRedacted
       } catch (e) {
         textEl.isRedacted = false
-        if (currentRedactedGroup !== null) {
-          mergedElements.push(currentRedactedGroup)
-          currentRedactedGroup = null
-        }
-        mergedElements.push(textEl)
+        textEl.matchedRedacted = null
       }
     })
-    
-    // Don't forget the last group
-    if (currentRedactedGroup !== null) {
-      mergedElements.push(currentRedactedGroup)
-    }
 
-    this.allTextElements = mergedElements
-    return mergedElements
+    // Group by redacted phrase. Merge only when a phrase has multiple words (free redaction = one span, multiple words).
+    const phraseGroups = new Map()
+    textElements.forEach((textEl) => {
+      if (textEl.isRedacted && textEl.matchedRedacted) {
+        const key = textEl.matchedRedacted
+        if (!phraseGroups.has(key)) {
+          phraseGroups.set(key, [])
+        }
+        phraseGroups.get(key).push(textEl)
+      }
+    })
+
+    // Output in document order. Multi-word groups = one merged beat; single-word = one beat.
+    textElements.forEach((textEl) => {
+      if (!textEl.isRedacted) {
+        resultElements.push(textEl)
+        return
+      }
+      const phrase = textEl.matchedRedacted
+      if (!phrase || outputPhrases.has(phrase)) return
+      outputPhrases.add(phrase)
+
+      const groupEls = phraseGroups.get(phrase) || [textEl]
+      if (groupEls.length === 1) {
+        resultElements.push(textEl)
+        return
+      }
+      // Multi-word phrase: merge into one beat
+      const first = groupEls[0]
+      const last = groupEls[groupEls.length - 1]
+      const merged = {
+        text: groupEls.map(e => e.text).join(' '),
+        range: first.range.cloneRange(),
+        element: first.element?.closest?.('.highlighted-text') || first.element,
+        isRedacted: true,
+      }
+      try {
+        merged.range.setEnd(last.range.endContainer, last.range.endOffset)
+      } catch (e) {
+        merged.text = groupEls.map(e => e.text).join(' ')
+      }
+      resultElements.push(merged)
+    })
+
+    this.allTextElements = resultElements
+    return resultElements
   }
 
   getAllTextElements() {

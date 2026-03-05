@@ -2,11 +2,12 @@ const INSTRUMENTS = ['kick', 'snare', 'hihat', 'openhat', 'crash']
 const REMOTE_INSTRUMENTS = ['inst1', 'inst2', 'inst3', 'inst4']
 
 export class AreaSelector {
-  constructor(onAreaSelected) {
+  constructor(onAreaSelected, onAreaRemoved) {
     this.isSelecting = false
     this.selectedAreas = []
-    this.areaBorderOverlays = [] // tracks borders AND pills for clearAll()
+    this.areaBorderOverlays = [] // tracks borders, pills, headers, close buttons for clearAll()
     this.onAreaSelected = onAreaSelected
+    this.onAreaRemoved = onAreaRemoved
     this.mode = 'browser' // 'browser' | 'remote'
   }
 
@@ -34,8 +35,11 @@ export class AreaSelector {
     this.isSelecting = true
     const btn = document.getElementById('select-area-btn')
     if (btn) {
-      btn.textContent = 'Selecting... (Click and drag)'
-      btn.disabled = true
+      btn.classList.add('active')
+    }
+    const hintEl = document.getElementById('area-select-hint')
+    if (hintEl) {
+      hintEl.style.display = ''
     }
 
     // Clear any existing text selection
@@ -131,8 +135,11 @@ export class AreaSelector {
         selector.style.display = 'none'
         this.isSelecting = false
         if (btn) {
-          btn.textContent = 'Select Area'
-          btn.disabled = false
+          btn.classList.remove('active')
+        }
+        const hintEl = document.getElementById('area-select-hint')
+        if (hintEl) {
+          hintEl.style.display = 'none'
         }
         
         const statusEl = document.getElementById('area-status')
@@ -192,19 +199,36 @@ export class AreaSelector {
 
     anchorElement.appendChild(border)
     this.areaBorderOverlays.push(border)
+    areaData.border = border
 
-    // ── Instrument pill (sibling of border — NOT a child — so pointer-events work) ──
+    // ── Area header: pill + close button (hover to show close) ──
+    const header = document.createElement('div')
+    header.className = 'area-selector-header'
+    header.style.position = 'absolute'
+    header.style.left = areaData.x + 'px'
+    header.style.top = (areaData.y - 28) + 'px'
+    header.style.width = areaData.width + 'px'
+    header.style.height = '28px'
+    header.style.zIndex = '999998'
+    header.style.display = 'flex'
+    header.style.alignItems = 'center'
+    header.style.justifyContent = 'center'
+    header.style.pointerEvents = 'auto'
+
     const pill = document.createElement('button')
     pill.className = 'area-instrument-pill'
     pill.textContent = this._getPillLabel(areaData)
     pill.title = 'Click to change instrument'
-
-    // Position pill centred above the top edge of the border
     pill.style.position = 'absolute'
-    pill.style.left = (areaData.x + areaData.width / 2) + 'px'
-    pill.style.top = areaData.y + 'px'
-    pill.style.transform = 'translate(-50%, -100%)'
-    pill.style.zIndex = '999998'
+    pill.style.left = '50%'
+    pill.style.top = '50%'
+    pill.style.transform = 'translate(-50%, -50%)'
+    pill.style.margin = '0'
+
+    const closeBtn = document.createElement('button')
+    closeBtn.className = 'area-close-btn'
+    closeBtn.textContent = '×'
+    closeBtn.title = 'Remove this area'
 
     pill.addEventListener('click', (e) => {
       e.stopPropagation()
@@ -218,12 +242,57 @@ export class AreaSelector {
       pill.textContent = this._getPillLabel(areaData)
     })
 
+    closeBtn.addEventListener('click', (e) => {
+      e.stopPropagation()
+      this.removeArea(areaData)
+    })
+
     areaData.pill = pill
-    anchorElement.appendChild(pill)
-    this.areaBorderOverlays.push(pill) // tracked so clearAll() removes it
+    areaData.header = header
+    areaData.closeBtn = closeBtn
+    header.appendChild(pill)
+    header.appendChild(closeBtn)
+    anchorElement.appendChild(header)
+    this.areaBorderOverlays.push(header)
+  }
+
+  removeArea(areaData) {
+    const idx = this.selectedAreas.indexOf(areaData)
+    if (idx === -1) return
+
+    this.selectedAreas.splice(idx, 1)
+
+    // Remove DOM elements
+    if (areaData.border && areaData.border.parentNode) {
+      areaData.border.parentNode.removeChild(areaData.border)
+    }
+    if (areaData.header && areaData.header.parentNode) {
+      areaData.header.parentNode.removeChild(areaData.header)
+    }
+    this.areaBorderOverlays = this.areaBorderOverlays.filter(el => el !== areaData.border && el !== areaData.header)
+
+    // Update status
+    const statusEl = document.getElementById('area-status')
+    if (statusEl) {
+      statusEl.textContent = this.selectedAreas.length === 0
+        ? 'No areas selected'
+        : `${this.selectedAreas.length} area${this.selectedAreas.length !== 1 ? 's' : ''} selected`
+    }
+
+    if (this.onAreaRemoved) {
+      this.onAreaRemoved(areaData)
+    }
   }
 
   clearAll() {
+    const hintEl = document.getElementById('area-select-hint')
+    if (hintEl) {
+      hintEl.style.display = 'none'
+    }
+    const btn = document.getElementById('select-area-btn')
+    if (btn) {
+      btn.classList.remove('active')
+    }
     // Remove all border overlays and pills
     this.areaBorderOverlays.forEach(el => {
       if (el && el.parentNode) {

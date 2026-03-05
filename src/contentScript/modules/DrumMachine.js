@@ -15,9 +15,13 @@ export class DrumMachine {
 
     this.ui = new UI()
     this.audioEngine = new AudioEngine()
-    this.areaSelector = new AreaSelector((areaData) => {
-      this.onAreaSelected(areaData)
-    })
+    this.areaSelector = new AreaSelector(
+      (areaData) => this.onAreaSelected(areaData),
+      (areaData) => {
+        this.extractAllTextElements()
+        this.broadcastState()
+      }
+    )
     this.textHighlighter = new TextHighlighter(() => {
       this.onHighlightChange()
     })
@@ -220,7 +224,8 @@ export class DrumMachine {
   extractAllTextElements() {
     const selectedAreas = this.areaSelector.getSelectedAreas()
     const highlightedWords = this.textHighlighter.getHighlightedWords()
-    this.textExtractor.extractAllTextElements(selectedAreas, highlightedWords)
+    const redactMode = this.textHighlighter.getRedactMode()
+    this.textExtractor.extractAllTextElements(selectedAreas, highlightedWords, redactMode)
   }
 
   handleTextSelection() {

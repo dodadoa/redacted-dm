@@ -134,6 +134,15 @@
     1px 1px 2px rgba(0, 0, 0, 0.2);
 }
 
+.drum-machine-button.active {
+  background: #000000;
+  color: #ffffff;
+  box-shadow:
+    inset -1px -1px 0px rgba(255, 255, 255, 0.1),
+    inset 1px 1px 0px rgba(0, 0, 0, 0.5),
+    1px 1px 2px rgba(0, 0, 0, 0.2);
+}
+
 .drum-machine-button:disabled {
   opacity: 0.45;
   cursor: not-allowed;
@@ -196,7 +205,7 @@
 
 .rectangle-selector {
   position: fixed;
-  border: 0.5px dashed #000000;
+  border: 0.5px dashed #5252525b;
   background: rgba(0, 0, 0, 0.1);
   pointer-events: none;
   z-index: 999998;
@@ -205,12 +214,13 @@
 
 .area-border-overlay {
   position: absolute;
-  border: 2px solid #000000;
+  border: 2px solid #3f3f3f8c;
   pointer-events: none;
   z-index: 999997;
   box-sizing: border-box;
   background: transparent;
   border-radius: 4px;
+  box-shadow: 0 0 4px rgba(161, 161, 161, 0.5);
 }
 
 .current-text-border {
@@ -248,6 +258,14 @@
 
 .highlighted-text.triggered * {
   color: #00ff88 !important;
+}
+
+/* Redacted text over links stays black when triggered — text should not appear */
+a .highlighted-text.triggered,
+a .highlighted-text.triggered * {
+  color: #000000 !important;
+  background: #000000 !important;
+  box-shadow: none !important;
 }
 
 /* Ensure links inside redacted text are completely black */
@@ -358,6 +376,42 @@
 
 .area-instrument-pill:hover {
   background: #333333;
+}
+
+/* Area selector header: close button appears on hover */
+.area-selector-header {
+  transition: opacity 0.15s;
+}
+
+.area-close-btn {
+  position: absolute;
+  top: 50%;
+  right: 4px;
+  transform: translateY(-50%);
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  color: #000000;
+  font-size: 18px;
+  line-height: 1;
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.15s, background 0.15s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 2;
+}
+
+.area-selector-header:hover .area-close-btn {
+  opacity: 1;
+}
+
+.area-close-btn:hover {
+  background: rgba(0, 0, 0, 0.1);
 }
 
 /* ── Speed multiplier row ────────────────────────────────────────────────── */
