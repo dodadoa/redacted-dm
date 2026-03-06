@@ -127,8 +127,8 @@ export class TextExtractor {
         const matches = highlightedWords.filter(hl => this._matchesHighlight(word, wordRect, hl))
         word.isRedacted     = matches.length > 0
         word.matchedRedacted = matches.length > 0
-          // Prefer the outermost span so nested word-spans stay grouped under their free-redact parent
-          ? (matches.find(r => !matches.some(o => o !== r && o.element.contains(r.element))) ?? matches[0])
+          // Prefer the innermost span — a word-mode redact inside a free-mode span keeps its own beat
+          ? (matches.find(r => !matches.some(o => o !== r && r.element.contains(o.element))) ?? matches[0])
           : null
       } catch {
         word.isRedacted      = false
@@ -149,14 +149,21 @@ export class TextExtractor {
       for (const el of elements) {
         if (el.contains(word.element) || word.element === el) return true
       }
-      // Rect-overlap fallback — handles edge cases where the word's parent element
-      // is not inside the span but still visually overlaps it
+      // Rect-overlap fallback — use getClientRects() (one rect per line box) to avoid
+      // false positives from getBoundingClientRect() on cross-line spans, whose bbox
+      // spans the full width of both lines and matches words that are outside the selection.
       for (const el of elements) {
         try {
-          const elRect = el.getBoundingClientRect()
-          const ox = Math.max(0, Math.min(wordRect.right,  elRect.right)  - Math.max(wordRect.left, elRect.left))
-          const oy = Math.max(0, Math.min(wordRect.bottom, elRect.bottom) - Math.max(wordRect.top,  elRect.top))
-          if (ox * oy > wordRect.width * wordRect.height * 0.3) return true
+          let elRects = Array.from(el.getClientRects?.() ?? []).filter(r => r.width > 0 && r.height > 0)
+          if (elRects.length === 0) {
+            const bbox = el.getBoundingClientRect?.()
+            if (bbox && bbox.width > 0 && bbox.height > 0) elRects = [bbox]
+          }
+          for (const elRect of elRects) {
+            const ox = Math.max(0, Math.min(wordRect.right,  elRect.right)  - Math.max(wordRect.left, elRect.left))
+            const oy = Math.max(0, Math.min(wordRect.bottom, elRect.bottom) - Math.max(wordRect.top,  elRect.top))
+            if (ox * oy > wordRect.width * wordRect.height * 0.3) return true
+          }
         } catch {
           // skip this element
         }
@@ -168,21 +175,40 @@ export class TextExtractor {
   }
 
   /**
-   * Emit words in order; multi-word redacted phrases become one merged beat.
-   * Single-word redacts and plain words pass through unchanged.
+   * Return which segment index of a phrase contains the given word.
+   */
+  _getSegmentIndex(word, phrase) {
+    const segs = phrase?.segments ?? (phrase?.element ? [phrase.element] : [])
+    for (let i = 0; i < segs.length; i++) {
+      const seg = segs[i]
+      if (seg && (seg.contains(word.element) || seg === word.element)) return i
+    }
+    return 0
+  }
+
+  /**
+   * Emit words in order; one beat per phrase. One selection = one beat even across multiple lines.
    */
   _mergeGroups(words) {
-    // Group each redacted word under its phrase span
+    let phraseId = 0
+    const phraseIds = new Map()
+    // Key by phrase only — all segments of one selection collapse into one beat
+    const getKey = (phrase) => {
+      if (!phraseIds.has(phrase)) phraseIds.set(phrase, phraseId++)
+      return `${phraseIds.get(phrase)}`
+    }
+
     const groups = new Map()
     words.forEach(w => {
       if (!w.isRedacted || !w.matchedRedacted) return
-      const g = groups.get(w.matchedRedacted)
+      const key = getKey(w.matchedRedacted)
+      const g = groups.get(key)
       if (g) g.push(w)
-      else groups.set(w.matchedRedacted, [w])
+      else groups.set(key, [w])
     })
 
     const result = []
-    const seen   = new Set()
+    const seen = new Set()
 
     words.forEach(w => {
       if (!w.isRedacted) {
@@ -190,23 +216,26 @@ export class TextExtractor {
         return
       }
       const phrase = w.matchedRedacted
-      if (!phrase || seen.has(phrase)) return
-      seen.add(phrase)
+      if (!phrase) return
+      const key = getKey(phrase)
+      if (seen.has(key)) return
+      seen.add(key)
 
-      const group = groups.get(phrase) ?? [w]
+      const group = groups.get(key) ?? [w]
+      const allSegs = phrase?.segments ?? (phrase?.element ? [phrase.element] : [])
+
       if (group.length === 1) {
-        result.push(w)
+        result.push({ ...w, segments: allSegs.length > 0 ? allSegs : null })
         return
       }
       // Multi-word: merge into a single beat spanning first → last word
-      const first  = group[0]
-      const last   = group[group.length - 1]
+      const first = group[0]
+      const last  = group[group.length - 1]
       const merged = {
         text:       group.map(e => e.text).join(' '),
         range:      first.range.cloneRange(),
         element:    first.element?.closest?.('.highlighted-text') ?? first.element,
-        // Carry the phrase's segment spans so the Sequencer can flash all lines
-        segments:   phrase?.segments ?? null,
+        segments:   allSegs.length > 0 ? allSegs : null,
         isRedacted: true,
       }
       try { merged.range.setEnd(last.range.endContainer, last.range.endOffset) } catch {}

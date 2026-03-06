@@ -17,22 +17,63 @@ export class Sequencer {
     this._lastPlayArgs = null
   }
 
-  // Filter allTextElements down to those whose center falls inside selectedArea
+  /**
+   * Get valid rects for a text element. Cross-block ranges can return empty
+   * from getClientRects() in Chrome — fall back to segment/element rects.
+   */
+  _getRectsForElement(textEl) {
+    const fromRange = Array.from(textEl.range.getClientRects?.() ?? []).filter(
+      r => r.width > 0 && r.height > 0
+    )
+    if (fromRange.length > 0) return fromRange
+
+    const bbox = textEl.range.getBoundingClientRect?.()
+    if (bbox && bbox.width > 0 && bbox.height > 0) return [bbox]
+
+    const segments = textEl.segments ?? (textEl.element ? [textEl.element] : [])
+    const rects = []
+    for (const el of segments) {
+      try {
+        const list = el.getClientRects?.()
+        let added = 0
+        if (list) {
+          for (let i = 0; i < list.length; i++) {
+            const r = list[i]
+            if (r.width > 0 && r.height > 0) {
+              rects.push(r)
+              added++
+            }
+          }
+        }
+        if (added === 0) {
+          const r = el.getBoundingClientRect?.()
+          if (r && r.width > 0 && r.height > 0) rects.push(r)
+        }
+      } catch {}
+    }
+    return rects
+  }
+
+  // Filter allTextElements down to those whose center falls inside selectedArea.
   _filterElementsForArea(allTextElements, selectedArea) {
+    const anchor = selectedArea.anchorElement ?? document.body
+    const anchorRect = anchor.getBoundingClientRect()
+
     return allTextElements.filter(textEl => {
       try {
-        const rect = textEl.range.getBoundingClientRect()
-        const centerX = rect.left + rect.width / 2
-        const centerY = rect.top + rect.height / 2
-        const anchorRect = selectedArea.anchorElement.getBoundingClientRect()
-        const relativeX = centerX - anchorRect.left
-        const relativeY = centerY - anchorRect.top
-        return (
-          relativeX >= selectedArea.x &&
-          relativeY >= selectedArea.y &&
-          relativeX <= selectedArea.x + selectedArea.width &&
-          relativeY <= selectedArea.y + selectedArea.height
-        )
+        const lineRects = this._getRectsForElement(textEl)
+        if (lineRects.length === 0) return false
+
+        return lineRects.some(r => {
+          const relativeX = (r.left + r.width / 2) - anchorRect.left
+          const relativeY = (r.top + r.height / 2) - anchorRect.top
+          return (
+            relativeX >= selectedArea.x &&
+            relativeY >= selectedArea.y &&
+            relativeX <= selectedArea.x + selectedArea.width &&
+            relativeY <= selectedArea.y + selectedArea.height
+          )
+        })
       } catch (e) {
         return false
       }
@@ -128,13 +169,11 @@ export class Sequencer {
       this.areaSteps[areaIndex] = nextStep
 
       // Verify the element still has a visible position inside the area.
-      // Cross-block ranges return zero from getBoundingClientRect() in Chrome,
-      // so fall back to getClientRects() (one rect per line box).
       try {
-        const lineRects = Array.from(textEl.range.getClientRects()).filter(r => r.width > 0 && r.height > 0)
+        const lineRects = this._getRectsForElement(textEl)
         if (lineRects.length === 0) return
 
-        const anchorRect = selectedArea.anchorElement.getBoundingClientRect()
+        const anchorRect = (selectedArea.anchorElement ?? document.body).getBoundingClientRect()
         const isWithinArea = lineRects.some(r => {
           const relativeX = (r.left + r.width  / 2) - anchorRect.left
           const relativeY = (r.top  + r.height / 2) - anchorRect.top
@@ -151,9 +190,8 @@ export class Sequencer {
       }
 
       // Create highlight border around current text — one border div per line box
-      // so cross-line phrases each get their own correctly-sized border.
       try {
-        const lineRects = Array.from(textEl.range.getClientRects()).filter(r => r.width > 0 && r.height > 0)
+        const lineRects = this._getRectsForElement(textEl)
         lineRects.forEach(rect => {
           const border = document.createElement('div')
           border.className = 'current-text-border'
@@ -199,8 +237,7 @@ export class Sequencer {
           })
 
           // Match this beat to a highlighted-word entry for drum-sound lookup.
-          // Use getClientRects() so cross-block ranges are handled correctly.
-          const textLineRects = Array.from(textEl.range.getClientRects()).filter(r => r.width > 0 && r.height > 0)
+          const textLineRects = this._getRectsForElement(textEl)
           const redactedIndex = liveHighlightedWords.findIndex(redacted => {
             const segments = redacted.segments ?? [redacted.element]
             return segments.some(seg => {

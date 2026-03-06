@@ -1,3 +1,6 @@
+const HIGHLIGHT_CLASS = 'highlighted-text'
+const OVERLAP_THRESHOLD = 0.3
+
 export class TextHighlighter {
   constructor(onHighlightChange) {
     this.highlightedWords = []
@@ -16,43 +19,19 @@ export class TextHighlighter {
   /** Redact the word at viewport position (x, y) if inside a selected area. Returns true if redacted. */
   redactWordAtPoint(clientX, clientY, selectedAreas) {
     if (selectedAreas.length === 0) return false
+    if (!this._pointInArea(clientX, clientY, selectedAreas)) return false
 
-    const inArea = selectedAreas.some(a => {
-      const anchor = a.anchorElement || document.body
-      const r = anchor.getBoundingClientRect()
-      const left = r.left + a.x
-      const top = r.top + a.y
-      return clientX >= left && clientX <= left + a.width && clientY >= top && clientY <= top + a.height
-    })
-    if (!inArea) return false
+    const caret = this._caretFromPoint(clientX, clientY)
+    if (!caret) return false
 
-    let textNode, offset
-    if (document.caretRangeFromPoint) {
-      const range = document.caretRangeFromPoint(clientX, clientY)
-      if (!range) return false
-      textNode = range.startContainer
-      offset = range.startOffset
-    } else if (document.caretPositionFromPoint) {
-      const pos = document.caretPositionFromPoint(clientX, clientY)
-      if (!pos) return false
-      textNode = pos.offsetNode
-      offset = pos.offset
-    } else {
-      return false
-    }
-    if (!textNode || textNode.nodeType !== Node.TEXT_NODE) return false
+    const { textNode, offset } = caret
+    const { start, end } = this._wordBoundaries(textNode.nodeValue, offset)
+    if (start >= end) return false
 
-    const text = textNode.nodeValue
-    let wordStart = offset
-    while (wordStart > 0 && /\S/.test(text[wordStart - 1])) wordStart--
-    let wordEnd = offset
-    while (wordEnd < text.length && /\S/.test(text[wordEnd])) wordEnd++
-    if (wordStart >= wordEnd) return false
-
-    const wordText = text.substring(wordStart, wordEnd)
+    const wordText = textNode.nodeValue.substring(start, end)
     const wordRange = document.createRange()
-    wordRange.setStart(textNode, wordStart)
-    wordRange.setEnd(textNode, wordEnd)
+    wordRange.setStart(textNode, start)
+    wordRange.setEnd(textNode, end)
 
     if (this.isAlreadyRedacted(wordRange)) return false
 
@@ -66,195 +45,59 @@ export class TextHighlighter {
     const selection = window.getSelection()
     if (!selection || selection.rangeCount === 0) return
 
-    // Clone the range immediately before it gets invalidated
     let range
     try {
       range = selection.getRangeAt(0).cloneRange()
-    } catch (e) {
+    } catch {
       return
     }
 
-    // Cross-block ranges (spanning two paragraphs) can produce a zero
-    // getBoundingClientRect() in Chrome, so we use getClientRects() which
-    // returns one rect per visible line box and is always reliable.
-    const clientRects = Array.from(range.getClientRects()).filter(r => r.width > 0 && r.height > 0)
-    if (clientRects.length === 0) return
+    if (!this._selectionInArea(range, selectedAreas)) return
 
-    // The selection is "in" an area when at least one of its line rects has
-    // its centre inside that area — important for cross-line selections where
-    // the bounding-rect centre would be in the gap between two lines.
-    const isInAnyArea = selectedAreas.some(selectedArea => {
-      const anchorRect = selectedArea.anchorElement.getBoundingClientRect()
-      return clientRects.some(lineRect => {
-        const relativeX = lineRect.left + lineRect.width  / 2 - anchorRect.left
-        const relativeY = lineRect.top  + lineRect.height / 2 - anchorRect.top
-        return (
-          relativeX >= selectedArea.x &&
-          relativeY >= selectedArea.y &&
-          relativeX <= selectedArea.x + selectedArea.width &&
-          relativeY <= selectedArea.y + selectedArea.height
-        )
-      })
-    })
-    
-    if (isInAnyArea) {
-      const text = range.toString().trim()
-      if (text && text.length > 0) {
-        // Clear selection first to avoid conflicts
-        selection.removeAllRanges()
-        
-        // Use setTimeout to ensure DOM is ready
-        setTimeout(() => {
-          if (this.redactMode === 'word') {
-            // Word mode: redact each word individually
-            this.redactWords(range)
-          } else {
-            // Free mode: redact the entire selection
-            try {
-              this.addHighlightedWord(text, range)
-            } catch (e) {
-              console.warn('Error in free mode redaction:', e)
-            }
-          }
-        }, 0)
+    const text = range.toString().trim()
+    if (!text) return
+
+    selection.removeAllRanges()
+    setTimeout(() => {
+      if (this.redactMode === 'word') {
+        this.redactWords(range)
+      } else {
+        try {
+          this.addHighlightedWord(text, range)
+        } catch (e) {
+          console.warn('Error in free mode redaction:', e)
+        }
       }
-    }
+    }, 0)
   }
 
   redactWords(range) {
     try {
       const text = range.toString().trim()
       if (!text) return
-      
-      // Split text into words (non-whitespace sequences)
-      const words = text.match(/\S+/g) || []
-      if (words.length === 0) return
-      
-      // Get the start container and offset
+
       const startContainer = range.startContainer
-      const startOffset = range.startOffset
       const endContainer = range.endContainer
+      const startOffset = range.startOffset
       const endOffset = range.endOffset
-      
-      // If both containers are the same text node, it's simple
+
       if (startContainer === endContainer && startContainer.nodeType === Node.TEXT_NODE) {
-        const nodeText = startContainer.nodeValue
-        const selectedText = nodeText.substring(startOffset, endOffset)
-        const wordsInSelection = selectedText.match(/\S+/g) || []
-        
-        let currentPos = startOffset
-        wordsInSelection.forEach(word => {
-          const wordIndex = nodeText.indexOf(word, currentPos)
-          if (wordIndex !== -1 && wordIndex < endOffset) {
-            try {
-              const wordRange = document.createRange()
-              wordRange.setStart(startContainer, wordIndex)
-              wordRange.setEnd(startContainer, wordIndex + word.length)
-              
-              if (!this.isAlreadyRedacted(wordRange)) {
-                this.addHighlightedWord(word, wordRange)
-              }
-              currentPos = wordIndex + word.length
-            } catch (e) {
-              console.warn('Error creating word range:', e)
-            }
-          }
-        })
+        this._redactWordsInSingleNode(startContainer, startOffset, endOffset)
         return
       }
-      
-      // For complex ranges spanning multiple nodes, get all text nodes
-      const textNodes = []
-      const walker = document.createTreeWalker(
-        range.commonAncestorContainer,
-        NodeFilter.SHOW_TEXT,
-        {
-          acceptNode: (node) => {
-            return range.intersectsNode(node) ? NodeFilter.FILTER_ACCEPT : NodeFilter.FILTER_REJECT
-          }
-        },
-        false
-      )
-      
-      let node
-      while (node = walker.nextNode()) {
-        textNodes.push(node)
-      }
-      
-      if (textNodes.length === 0) return
-      
-      // Process each text node and find words
-      textNodes.forEach(textNode => {
-        const nodeText = textNode.nodeValue
-        if (!nodeText || nodeText.trim().length === 0) return
-        
-        // Determine the valid range within this node
-        let nodeStart = 0
-        let nodeEnd = nodeText.length
-        
-        if (textNode === startContainer && startContainer.nodeType === Node.TEXT_NODE) {
-          nodeStart = startOffset
-        }
-        if (textNode === endContainer && endContainer.nodeType === Node.TEXT_NODE) {
-          nodeEnd = endOffset
-        }
-        
-        const nodeSubstring = nodeText.substring(nodeStart, nodeEnd)
-        const wordsInNode = nodeSubstring.match(/\S+/g) || []
-        
-        wordsInNode.forEach(word => {
-          const wordIndex = nodeText.indexOf(word, nodeStart)
-          if (wordIndex !== -1 && wordIndex + word.length <= nodeEnd) {
-            try {
-              const wordRange = document.createRange()
-              wordRange.setStart(textNode, wordIndex)
-              wordRange.setEnd(textNode, wordIndex + word.length)
-              
-              if (!this.isAlreadyRedacted(wordRange)) {
-                this.addHighlightedWord(word, wordRange)
-              }
-            } catch (e) {
-              console.warn('Error creating word range:', e)
-            }
-          }
-        })
-      })
+
+      this._redactWordsInMultiNode(range)
     } catch (e) {
       console.warn('Could not split selection into words:', e)
-      // Fallback to free mode
-      try {
-        const text = range.toString().trim()
-        if (text) {
-          this.addHighlightedWord(text, range)
-        }
-      } catch (e2) {
-        console.warn('Fallback also failed:', e2)
-      }
+      const fallbackText = range.toString().trim()
+      if (fallbackText) this.addHighlightedWord(fallbackText, range)
     }
   }
 
   isAlreadyRedacted(range) {
     try {
-      const rect = range.getBoundingClientRect()
-      return this.highlightedWords.some(w => {
-        try {
-          // Check each segment individually to avoid false positives from multi-line
-          // bounding rects that would cover the entire area between two wrapped lines.
-          const segments = w.segments ?? [w.element]
-          return segments.some(el => {
-            try {
-              const elRect = el.getBoundingClientRect()
-              const overlapX = Math.max(0, Math.min(rect.right, elRect.right) - Math.max(rect.left, elRect.left))
-              const overlapY = Math.max(0, Math.min(rect.bottom, elRect.bottom) - Math.max(rect.top, elRect.top))
-              return overlapX * overlapY > rect.width * rect.height * 0.3
-            } catch {
-              return false
-            }
-          })
-        } catch {
-          return false
-        }
-      })
+      const rangeRect = range.getBoundingClientRect()
+      return this.highlightedWords.some(word => this._highlightOverlapsRange(word, rangeRect))
     } catch {
       return false
     }
@@ -268,45 +111,20 @@ export class TextHighlighter {
 
     try {
       const startContainer = range.startContainer
-      const endContainer   = range.endContainer
-      const startOffset    = range.startOffset
-      const endOffset      = range.endOffset
+      const endContainer = range.endContainer
+      const startOffset = range.startOffset
+      const endOffset = range.endOffset
 
-      let segments = []
+      let segments
 
-      // Case 1: range is within a single text node (most common)
       if (startContainer === endContainer && startContainer.nodeType === Node.TEXT_NODE) {
-        const span = document.createElement('span')
-        span.className = 'highlighted-text'
-        span.setAttribute('data-word-index', wordIndex)
-
-        const parent = startContainer.parentNode
-        if (!parent) return
-
-        const nodeValue    = startContainer.nodeValue
-        const beforeNode   = nodeValue.substring(0, startOffset) ? document.createTextNode(nodeValue.substring(0, startOffset)) : null
-        span.textContent   = nodeValue.substring(startOffset, endOffset)
-        const afterNode    = nodeValue.substring(endOffset)      ? document.createTextNode(nodeValue.substring(endOffset))      : null
-
-        if (afterNode) {
-          parent.replaceChild(afterNode, startContainer)
-          parent.insertBefore(span, afterNode)
-        } else {
-          parent.replaceChild(span, startContainer)
-        }
-        if (beforeNode) parent.insertBefore(beforeNode, span)
-
-        segments = [span]
+        segments = this._wrapSingleTextNode(startContainer, startOffset, endOffset, wordIndex)
       } else {
-        // Multi-node range (cross-line / cross-element): wrap each text node
-        // individually to avoid DOM corruption from extractContents().
         segments = this._wrapMultiNodeRange(range, wordIndex)
-
         if (segments.length === 0) {
-          // Last-resort: try surroundContents for degenerate edge cases
           try {
             const span = document.createElement('span')
-            span.className = 'highlighted-text'
+            span.className = HIGHLIGHT_CLASS
             span.setAttribute('data-word-index', wordIndex)
             range.surroundContents(span)
             segments = [span]
@@ -319,26 +137,176 @@ export class TextHighlighter {
 
       this.highlightedWords.push({ text, element: segments[0], segments, index: wordIndex })
       this.updateHighlightStatus()
-      if (this.onHighlightChange) this.onHighlightChange()
+      this.onHighlightChange?.()
     } catch (e) {
       console.warn('Error in addHighlightedWord:', e)
     }
   }
 
-  /**
-   * Wrap each text node intersecting `range` with its own `.highlighted-text` span,
-   * using the same safe in-place substitution as Case 1. Returns all created spans.
-   * Collecting nodes before mutation avoids TreeWalker invalidation mid-traversal.
-   */
-  _wrapMultiNodeRange(range, wordIndex) {
-    const segments = []
-    if (range.commonAncestorContainer.nodeType === Node.TEXT_NODE) return segments
+  updateHighlightStatus() {
+    const status = document.getElementById('highlight-status')
+    if (status) {
+      const count = this.highlightedWords.length
+      status.textContent = `${count} phrase${count !== 1 ? 's' : ''} redacted`
+    }
+  }
 
+  getHighlightedWords() {
+    return this.highlightedWords
+  }
+
+  undoLastRedaction() {
+    if (this.highlightedWords.length === 0) return
+    const last = this.highlightedWords.pop()
+    this._restoreSegments(last.segments ?? [last.element])
+    this.updateHighlightStatus()
+    this.onHighlightChange?.()
+  }
+
+  clearHighlights() {
+    this.highlightedWords.forEach(word => {
+      this._restoreSegments(word.segments ?? [word.element])
+    })
+    this.highlightedWords = []
+    this.updateHighlightStatus()
+  }
+
+  // ── Private helpers ────────────────────────────────────────────────────────
+
+  _pointInArea(clientX, clientY, selectedAreas) {
+    return selectedAreas.some(area => {
+      const anchor = area.anchorElement ?? document.body
+      const rect = anchor.getBoundingClientRect()
+      const left = rect.left + area.x
+      const top = rect.top + area.y
+      return (
+        clientX >= left &&
+        clientX <= left + area.width &&
+        clientY >= top &&
+        clientY <= top + area.height
+      )
+    })
+  }
+
+  _caretFromPoint(clientX, clientY) {
+    if (document.caretRangeFromPoint) {
+      const range = document.caretRangeFromPoint(clientX, clientY)
+      if (!range) return null
+      const node = range.startContainer
+      if (node?.nodeType !== Node.TEXT_NODE) return null
+      return { textNode: node, offset: range.startOffset }
+    }
+    if (document.caretPositionFromPoint) {
+      const pos = document.caretPositionFromPoint(clientX, clientY)
+      if (!pos) return null
+      const node = pos.offsetNode
+      if (node?.nodeType !== Node.TEXT_NODE) return null
+      return { textNode: node, offset: pos.offset }
+    }
+    return null
+  }
+
+  _wordBoundaries(text, offset) {
+    let start = offset
+    while (start > 0 && /\S/.test(text[start - 1])) start--
+    let end = offset
+    while (end < text.length && /\S/.test(text[end])) end++
+    return { start, end }
+  }
+
+  _selectionInArea(range, selectedAreas) {
+    const clientRects = Array.from(range.getClientRects()).filter(
+      rect => rect.width > 0 && rect.height > 0
+    )
+    if (clientRects.length === 0) return false
+
+    return selectedAreas.some(area => {
+      const anchor = area.anchorElement ?? document.body
+      const anchorRect = anchor.getBoundingClientRect()
+      // Require ALL rects to be inside the area so redaction doesn't exceed selection bounds
+      return clientRects.every(lineRect => {
+        const relativeX = lineRect.left + lineRect.width / 2 - anchorRect.left
+        const relativeY = lineRect.top + lineRect.height / 2 - anchorRect.top
+        return (
+          relativeX >= area.x &&
+          relativeY >= area.y &&
+          relativeX <= area.x + area.width &&
+          relativeY <= area.y + area.height
+        )
+      })
+    })
+  }
+
+  _redactWordsInSingleNode(textNode, startOffset, endOffset) {
+    const nodeText = textNode.nodeValue
+    const selectedText = nodeText.substring(startOffset, endOffset)
+    const words = selectedText.match(/\S+/g) ?? []
+    let currentPos = startOffset
+
+    for (const word of words) {
+      const wordIndex = nodeText.indexOf(word, currentPos)
+      if (wordIndex === -1 || wordIndex >= endOffset) continue
+      try {
+        const wordRange = document.createRange()
+        wordRange.setStart(textNode, wordIndex)
+        wordRange.setEnd(textNode, wordIndex + word.length)
+        if (!this.isAlreadyRedacted(wordRange)) {
+          this.addHighlightedWord(word, wordRange)
+        }
+        currentPos = wordIndex + word.length
+      } catch (e) {
+        console.warn('Error creating word range:', e)
+      }
+    }
+  }
+
+  _redactWordsInMultiNode(range) {
+    const textNodes = this._collectTextNodesInRange(range)
+    const startContainer = range.startContainer
+    const endContainer = range.endContainer
+    const startOffset = range.startOffset
+    const endOffset = range.endOffset
+
+    for (const textNode of textNodes) {
+      const nodeText = textNode.nodeValue
+      if (!nodeText?.trim()) continue
+
+      let nodeStart = 0
+      let nodeEnd = nodeText.length
+      if (textNode === startContainer && startContainer.nodeType === Node.TEXT_NODE) {
+        nodeStart = startOffset
+      }
+      if (textNode === endContainer && endContainer.nodeType === Node.TEXT_NODE) {
+        nodeEnd = endOffset
+      }
+
+      const nodeSubstring = nodeText.substring(nodeStart, nodeEnd)
+      const words = nodeSubstring.match(/\S+/g) ?? []
+
+      for (const word of words) {
+        const wordIndex = nodeText.indexOf(word, nodeStart)
+        if (wordIndex === -1 || wordIndex + word.length > nodeEnd) continue
+        try {
+          const wordRange = document.createRange()
+          wordRange.setStart(textNode, wordIndex)
+          wordRange.setEnd(textNode, wordIndex + word.length)
+          if (!this.isAlreadyRedacted(wordRange)) {
+            this.addHighlightedWord(word, wordRange)
+          }
+        } catch (e) {
+          console.warn('Error creating word range:', e)
+        }
+      }
+    }
+  }
+
+  _collectTextNodesInRange(range) {
+    const textNodes = []
     const walker = document.createTreeWalker(
       range.commonAncestorContainer,
       NodeFilter.SHOW_TEXT,
       {
-        acceptNode: (node) => {
+        acceptNode: node => {
           try {
             return range.intersectsNode(node) ? NodeFilter.FILTER_ACCEPT : NodeFilter.FILTER_REJECT
           } catch {
@@ -348,35 +316,105 @@ export class TextHighlighter {
       },
       false
     )
-
-    // Collect first so DOM mutations during wrapping don't confuse the walker
-    const textNodes = []
     let node
     while ((node = walker.nextNode())) textNodes.push(node)
+    return textNodes
+  }
+
+  _highlightOverlapsRange(word, rangeRect) {
+    try {
+      const segments = word.segments ?? [word.element]
+      return segments.some(element => {
+        try {
+          // Use getClientRects() so a single span wrapping two lines doesn't block
+          // new redactions on the second line — one rect per line box, not one huge bbox.
+          let rects = Array.from(element.getClientRects?.() ?? []).filter(r => r.width > 0 && r.height > 0)
+          if (rects.length === 0) {
+            const fallback = element.getBoundingClientRect()
+            if (fallback.width > 0 && fallback.height > 0) rects = [fallback]
+          }
+          return rects.some(elementRect =>
+            this._rectOverlapExceedsThreshold(rangeRect, elementRect)
+          )
+        } catch {
+          return false
+        }
+      })
+    } catch {
+      return false
+    }
+  }
+
+  _rectOverlapExceedsThreshold(rangeRect, elementRect) {
+    const overlapX = Math.max(
+      0,
+      Math.min(rangeRect.right, elementRect.right) - Math.max(rangeRect.left, elementRect.left)
+    )
+    const overlapY = Math.max(
+      0,
+      Math.min(rangeRect.bottom, elementRect.bottom) - Math.max(rangeRect.top, elementRect.top)
+    )
+    const threshold = rangeRect.width * rangeRect.height * OVERLAP_THRESHOLD
+    return overlapX * overlapY > threshold
+  }
+
+  _wrapSingleTextNode(textNode, startOffset, endOffset, wordIndex) {
+    const parent = textNode.parentNode
+    if (!parent) return []
+
+    const nodeValue = textNode.nodeValue
+    const beforeText = nodeValue.substring(0, startOffset)
+    const selectedText = nodeValue.substring(startOffset, endOffset)
+    const afterText = nodeValue.substring(endOffset)
+
+    const span = document.createElement('span')
+    span.className = HIGHLIGHT_CLASS
+    span.setAttribute('data-word-index', wordIndex)
+    span.textContent = selectedText
+
+    const afterNode = afterText ? document.createTextNode(afterText) : null
+    if (afterNode) {
+      parent.replaceChild(afterNode, textNode)
+      parent.insertBefore(span, afterNode)
+    } else {
+      parent.replaceChild(span, textNode)
+    }
+    if (beforeText) parent.insertBefore(document.createTextNode(beforeText), span)
+    return [span]
+  }
+
+  _wrapMultiNodeRange(range, wordIndex) {
+    if (range.commonAncestorContainer.nodeType === Node.TEXT_NODE) return []
+
+    const textNodes = this._collectTextNodesInRange(range)
+    const segments = []
 
     for (const textNode of textNodes) {
       const text = textNode.nodeValue
-      if (!text || text.trim().length === 0) continue
+      if (!text?.trim()) continue
+
+      // Skip text nodes already inside a highlighted span — they have their own redaction
+      if (textNode.parentElement?.classList.contains(HIGHLIGHT_CLASS)) continue
 
       let start = 0
-      let end   = text.length
+      let end = text.length
       if (textNode === range.startContainer) start = range.startOffset
-      if (textNode === range.endContainer)   end   = range.endOffset
+      if (textNode === range.endContainer) end = range.endOffset
       if (start >= end) continue
 
       const selectedText = text.substring(start, end)
       if (!selectedText.trim()) continue
 
       const span = document.createElement('span')
-      span.className = 'highlighted-text'
+      span.className = HIGHLIGHT_CLASS
       span.setAttribute('data-word-index', wordIndex)
+      span.textContent = selectedText
 
       const parent = textNode.parentNode
       if (!parent) continue
 
       const beforeNode = text.substring(0, start) ? document.createTextNode(text.substring(0, start)) : null
-      span.textContent = selectedText
-      const afterNode  = text.substring(end)      ? document.createTextNode(text.substring(end))      : null
+      const afterNode = text.substring(end) ? document.createTextNode(text.substring(end)) : null
 
       if (afterNode) {
         parent.replaceChild(afterNode, textNode)
@@ -392,45 +430,14 @@ export class TextHighlighter {
     return segments
   }
 
-  updateHighlightStatus() {
-    const status = document.getElementById('highlight-status')
-    if (status) {
-      status.textContent = `${this.highlightedWords.length} phrase${this.highlightedWords.length !== 1 ? 's' : ''} redacted`
-    }
-  }
-
-  getHighlightedWords() {
-    return this.highlightedWords
-  }
-
-  undoLastRedaction() {
-    if (this.highlightedWords.length === 0) return
-    const last = this.highlightedWords.pop()
-    const segments = last.segments ?? [last.element]
-    segments.forEach(segment => {
-      if (segment && segment.parentNode) {
+  _restoreSegments(segments) {
+    for (const segment of segments) {
+      if (segment?.parentNode) {
         const parent = segment.parentNode
         parent.replaceChild(document.createTextNode(segment.textContent), segment)
         parent.normalize()
       }
-    })
-    this.updateHighlightStatus()
-    if (this.onHighlightChange) this.onHighlightChange()
+    }
   }
 
-  clearHighlights() {
-    this.highlightedWords.forEach(word => {
-      const segments = word.segments ?? [word.element]
-      segments.forEach(segment => {
-        if (segment && segment.parentNode) {
-          const parent = segment.parentNode
-          parent.replaceChild(document.createTextNode(segment.textContent), segment)
-          parent.normalize()
-        }
-      })
-    })
-    this.highlightedWords = []
-    this.updateHighlightStatus()
-  }
 }
-

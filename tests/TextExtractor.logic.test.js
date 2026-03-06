@@ -233,20 +233,19 @@ describe('_markRedacted', () => {
     expect(word.matchedRedacted).toBe(highlight)
   })
 
-  it('prefers the outermost match when multiple highlights match', () => {
+  it('prefers the innermost match when multiple highlights match', () => {
     const innerElement = stubElement()
-    // outerElement contains innerElement — so outerHighlight is the outermost match
+    // outerElement contains innerElement
     const outerElement = stubElement({ contains: (element) => element === innerElement })
     const outerHighlight = { element: outerElement }
     const innerHighlight = { element: innerElement }
 
-    // word.element === innerElement → both highlights match:
-    //   innerHighlight via identity, outerHighlight via outerElement.contains(innerElement)
+    // word.element === innerElement → both highlights match
     const word = makeWord('nested', rect(5, 5), { element: innerElement })
     extractor._markRedacted([word], [outerHighlight, innerHighlight])
 
-    // outerHighlight is NOT contained by any other match → selected as outermost
-    expect(word.matchedRedacted).toBe(outerHighlight)
+    // innerHighlight is NOT contained by any other match → selected as innermost
+    expect(word.matchedRedacted).toBe(innerHighlight)
   })
 
   it('falls back to isRedacted false when range.getBoundingClientRect throws', () => {
@@ -273,12 +272,14 @@ describe('_mergeGroups', () => {
     expect(result[0]).toBe(word)
   })
 
-  it('passes a single-word redacted entry through unchanged (same reference)', () => {
-    const phrase = {}
+  it('passes a single-word redacted entry through (with segments attached)', () => {
+    const seg    = {}
+    const phrase = { segments: [seg] }
     const word   = makeWord('secret', rect(0, 0), { isRedacted: true, matchedRedacted: phrase })
     const result = extractor._mergeGroups([word])
     expect(result).toHaveLength(1)
-    expect(result[0]).toBe(word)
+    expect(result[0].text).toBe('secret')
+    expect(result[0].segments).toEqual([seg])
   })
 
   it('merges a two-word phrase into one beat with joined text', () => {
@@ -352,5 +353,21 @@ describe('_mergeGroups', () => {
     ]
     const result = extractor._mergeGroups(words)
     expect(result[0].element).toBe(highlightSpan)
+  })
+
+  it('merges a cross-line phrase (multiple segments) into ONE beat', () => {
+    const seg0 = {}
+    seg0.contains = (el) => el === seg0
+    const seg1 = {}
+    seg1.contains = (el) => el === seg1
+    const phrase = { segments: [seg0, seg1] }
+    const words = [
+      makeWord('line1word', rect(0,  0), { isRedacted: true, matchedRedacted: phrase, element: seg0 }),
+      makeWord('line2word', rect(0, 20), { isRedacted: true, matchedRedacted: phrase, element: seg1 }),
+    ]
+    const result = extractor._mergeGroups(words)
+    expect(result).toHaveLength(1)
+    expect(result[0].text).toBe('line1word line2word')
+    expect(result[0].segments).toEqual([seg0, seg1])
   })
 })
