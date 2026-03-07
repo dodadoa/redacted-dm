@@ -1,5 +1,12 @@
 import { OSCClient } from './OSCClient.js'
 
+// Offset (seconds) added to all Web Audio start times so the sound fires
+// after the browser has painted the visual glow.
+// requestAnimationFrame commits the glow at the very next frame boundary
+// (0–16 ms at 60 Hz), so 20 ms of audio lookahead is enough headroom
+// while remaining imperceptible as latency.
+const VISUAL_LOOKAHEAD_S = 0.02
+
 export class AudioEngine {
   constructor() {
     this.audioContext = null
@@ -140,24 +147,26 @@ export class AudioEngine {
         const gainNode = this.audioContext.createGain()
         const now = this.audioContext.currentTime
 
+        const start = now + VISUAL_LOOKAHEAD_S
+
         switch (type) {
           case 'kick':
             oscillator.connect(gainNode)
             gainNode.connect(this.audioContext.destination)
-            oscillator.frequency.setValueAtTime(60, now)
-            oscillator.frequency.exponentialRampToValueAtTime(30, now + 0.1)
-            gainNode.gain.setValueAtTime(1, now)
-            gainNode.gain.exponentialRampToValueAtTime(0.01, now + 0.3)
+            oscillator.frequency.setValueAtTime(60, start)
+            oscillator.frequency.exponentialRampToValueAtTime(30, start + 0.1)
+            gainNode.gain.setValueAtTime(1, start)
+            gainNode.gain.exponentialRampToValueAtTime(0.01, start + 0.3)
             oscillator.type = 'sine'
             break
           case 'snare': {
             // Body + noise burst, short decay
             oscillator.connect(gainNode)
             gainNode.connect(this.audioContext.destination)
-            oscillator.frequency.setValueAtTime(180, now)
-            oscillator.frequency.exponentialRampToValueAtTime(60, now + 0.03)
-            gainNode.gain.setValueAtTime(0.4, now)
-            gainNode.gain.exponentialRampToValueAtTime(0.01, now + 0.08)
+            oscillator.frequency.setValueAtTime(180, start)
+            oscillator.frequency.exponentialRampToValueAtTime(60, start + 0.03)
+            gainNode.gain.setValueAtTime(0.4, start)
+            gainNode.gain.exponentialRampToValueAtTime(0.01, start + 0.08)
             oscillator.type = 'triangle'
             // Noise layer
             const noiseBuffer = this._createNoiseBuffer(0.12)
@@ -170,10 +179,10 @@ export class AudioEngine {
             noise.connect(noiseFilter)
             noiseFilter.connect(noiseGain)
             noiseGain.connect(this.audioContext.destination)
-            noiseGain.gain.setValueAtTime(0.5, now)
-            noiseGain.gain.exponentialRampToValueAtTime(0.01, now + 0.1)
-            noise.start(now)
-            noise.stop(now + 0.12)
+            noiseGain.gain.setValueAtTime(0.5, start)
+            noiseGain.gain.exponentialRampToValueAtTime(0.01, start + 0.1)
+            noise.start(start)
+            noise.stop(start + 0.12)
             break
           }
           case 'hihat': {
@@ -188,10 +197,10 @@ export class AudioEngine {
             noise.connect(noiseFilter)
             noiseFilter.connect(noiseGain)
             noiseGain.connect(this.audioContext.destination)
-            noiseGain.gain.setValueAtTime(0.3, now)
-            noiseGain.gain.exponentialRampToValueAtTime(0.01, now + 0.07)
-            noise.start(now)
-            noise.stop(now + 0.08)
+            noiseGain.gain.setValueAtTime(0.3, start)
+            noiseGain.gain.exponentialRampToValueAtTime(0.01, start + 0.07)
+            noise.start(start)
+            noise.stop(start + 0.08)
             break
           }
           case 'openhat': {
@@ -213,32 +222,32 @@ export class AudioEngine {
             noiseFilter.frequency.value = 3500
             noise.connect(noiseFilter)
             noiseFilter.connect(noiseGain)
-            noiseGain.gain.setValueAtTime(0.35, now)
-            noiseGain.gain.exponentialRampToValueAtTime(0.01, now + 0.65)
+            noiseGain.gain.setValueAtTime(0.35, start)
+            noiseGain.gain.exponentialRampToValueAtTime(0.01, start + 0.65)
             noiseGain.connect(dryGain)
             dryGain.connect(dryMix)
             dryMix.connect(this.audioContext.destination)
             dryGain.connect(reverbConvolver)
             reverbConvolver.connect(reverbGain)
             reverbGain.connect(this.audioContext.destination)
-            noise.start(now)
-            noise.stop(now + 0.7)
+            noise.start(start)
+            noise.stop(start + 0.7)
             break
           }
           case 'laser':
             oscillator.connect(gainNode)
             gainNode.connect(this.audioContext.destination)
-            oscillator.frequency.setValueAtTime(12000, now)
-            oscillator.frequency.exponentialRampToValueAtTime(3000, now + 0.3)
-            gainNode.gain.setValueAtTime(0.5, now)
-            gainNode.gain.exponentialRampToValueAtTime(0.01, now + 0.4)
+            oscillator.frequency.setValueAtTime(12000, start)
+            oscillator.frequency.exponentialRampToValueAtTime(3000, start + 0.3)
+            gainNode.gain.setValueAtTime(0.5, start)
+            gainNode.gain.exponentialRampToValueAtTime(0.01, start + 0.4)
             oscillator.type = 'sawtooth'
             break
         }
 
         if (type !== 'hihat' && type !== 'openhat') {
-          oscillator.start(now)
-          oscillator.stop(now + 0.5)
+          oscillator.start(start)
+          oscillator.stop(start + 0.5)
         }
       }
     })

@@ -228,12 +228,18 @@ export class Sequencer {
           // For cross-line phrases, textEl.segments holds one span per line;
           // flash all of them so every segment turns green, not just the first.
           const segmentsToFlash = textEl.segments ?? (textEl.element ? [textEl.element] : [])
-          segmentsToFlash.forEach(el => {
-            if (el) {
-              el.classList.add('triggered')
-              this.triggeredElements.push(el)
-              setTimeout(() => { el.classList.remove('triggered') }, glowDuration)
-            }
+
+          // Apply the glow at the very start of the next paint frame so the
+          // class change is committed to the frame that's about to be drawn,
+          // giving the browser maximum time to render before the audio fires.
+          requestAnimationFrame(() => {
+            segmentsToFlash.forEach(el => {
+              if (el) {
+                el.classList.add('triggered')
+                this.triggeredElements.push(el)
+                setTimeout(() => { el.classList.remove('triggered') }, glowDuration)
+              }
+            })
           })
 
           // Match this beat to a highlighted-word entry for drum-sound lookup.
