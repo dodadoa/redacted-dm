@@ -4,9 +4,9 @@ import packageData from '../package.json'
 const isDev = process.env.NODE_ENV == 'development'
 
 export default defineManifest({
-  name: `${packageData.displayName || packageData.name}${isDev ? ` ➡️ Dev` : ''}`,
-  description: packageData.description,
-  version: packageData.version,
+name: `Self-censored Step Sequencer`,
+  description: `A step sequencer that turns redacted text into rhythm. In the age of blacked-out documents and missing pages, what you cannot say becomes the beat. Perform the silence.`,
+  version: "0.1.0",
   manifest_version: 3,
   icons: {
     16: 'img/logo-16.png',
