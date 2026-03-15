@@ -18,6 +18,7 @@ export class DrumMachine {
     this.areaSelector = new AreaSelector(
       (areaData) => this.onAreaSelected(areaData),
       (areaData) => {
+        this.textHighlighter.clearHighlights()
         this.extractAllTextElements()
         this.broadcastState()
       }
@@ -284,6 +285,7 @@ export class DrumMachine {
 
   hideOverlay() {
     this.stop()
+    this.textHighlighter.clearHighlights()
     this.ui.hide()
   }
 }
