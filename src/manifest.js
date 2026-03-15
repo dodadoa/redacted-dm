@@ -5,7 +5,7 @@ const isDev = process.env.NODE_ENV == 'development'
 
 export default defineManifest({
 name: `Self-censored Step Sequencer`,
-  description: `A step sequencer that turns redacted text into rhythm. In the age of blacked-out documents and missing pages, what you cannot say becomes the beat. Perform the silence.`,
+  description: `A step sequencer that turns redacted text into rhythm. In the age of blacked-out documents, what you cannot say becomes the beat.`,
   version: "0.1.0",
   manifest_version: 3,
   icons: {

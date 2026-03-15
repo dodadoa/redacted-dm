@@ -20,6 +20,7 @@
     "build": "vite build",
     "preview": "vite preview",
     "fmt": "prettier --write '**/*.{js,json,css,scss,md}'",
+    "icons": "node scripts/generate-icons.js",
     "zip": "npm run build && node src/zip.js",
     "test": "vitest run",
     "test:watch": "vitest"
@@ -30,6 +31,7 @@
     "gulp-zip": "^6.0.0",
     "jsdom": "^28.1.0",
     "prettier": "^3.0.3",
+    "sharp": "^0.34.5",
     "vite": "^5.4.10",
     "vitest": "^4.0.18"
   }
