@@ -171,6 +171,46 @@ export class TextHighlighter {
     this.updateHighlightStatus()
   }
 
+  /**
+   * Remove only the highlights whose segments fall inside the given area.
+   * Highlights that belong to other areas are left untouched.
+   */
+  clearHighlightsInArea(areaData) {
+    const anchor = areaData.anchorElement ?? document.body
+    const anchorRect = anchor.getBoundingClientRect()
+
+    const toKeep = []
+    const toRemove = []
+
+    this.highlightedWords.forEach(word => {
+      const segments = word.segments ?? (word.element ? [word.element] : [])
+      const inArea = segments.some(seg => {
+        try {
+          let rects = Array.from(seg.getClientRects?.() ?? []).filter(r => r.width > 0 && r.height > 0)
+          if (rects.length === 0) {
+            const bbox = seg.getBoundingClientRect?.()
+            if (bbox && bbox.width > 0 && bbox.height > 0) rects = [bbox]
+          }
+          return rects.some(r => {
+            const cx = (r.left + r.width  / 2) - anchorRect.left
+            const cy = (r.top  + r.height / 2) - anchorRect.top
+            return cx >= areaData.x && cy >= areaData.y &&
+                   cx <= areaData.x + areaData.width &&
+                   cy <= areaData.y + areaData.height
+          })
+        } catch { return false }
+      })
+
+      if (inArea) toRemove.push(word)
+      else toKeep.push(word)
+    })
+
+    toRemove.forEach(word => this._restoreSegments(word.segments ?? [word.element]))
+    this.highlightedWords = toKeep
+    this.updateHighlightStatus()
+    this.onHighlightChange?.()
+  }
+
   // ── Private helpers ────────────────────────────────────────────────────────
 
   _pointInArea(clientX, clientY, selectedAreas) {

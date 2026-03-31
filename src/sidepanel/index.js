@@ -142,6 +142,7 @@ document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('btn-osc-disconnect').disabled = !state.oscConnected
 
     // Areas
+    document.getElementById('btn-select-area')?.classList.toggle('active', !!state.isSelecting)
     const areaStatus = document.getElementById('area-status')
     if (areaStatus) {
       const n = state.areaCount || 0

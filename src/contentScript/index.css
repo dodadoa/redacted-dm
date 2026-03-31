@@ -259,12 +259,15 @@
   color: #00ff88 !important;
 }
 
-/* Redacted text over links stays black when triggered — text should not appear */
+/* Redacted text inside links: show the beat glow but keep text invisible
+   (green-on-green) so the word content is never revealed. */
 a .highlighted-text.triggered,
 a .highlighted-text.triggered * {
-  color: #000000 !important;
-  background: #000000 !important;
-  box-shadow: none !important;
+  color: #00ff88 !important;
+  background: #00ff88 !important;
+  box-shadow:
+    0 0 6px 2px #00ff88,
+    0 0 18px 4px rgba(0, 255, 136, 0.7) !important;
 }
 
 /* Override high-specificity link pseudo-class rules when triggered so links

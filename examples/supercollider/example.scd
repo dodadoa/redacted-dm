@@ -88,7 +88,7 @@ SynthDef(\blip, {
 	snd = snd + PitchShift.ar(snd, 0.2, 2);
 	snd = snd + PitchShift.ar(snd, 0.5, 5);
 	snd = snd.tanh;
-	snd = snd * -12.dbamp;
+	snd = snd * -8.dbamp;
 	snd = snd ! 2;
 	snd = snd * amp;
 	Out.ar(\out.kr(0), snd);

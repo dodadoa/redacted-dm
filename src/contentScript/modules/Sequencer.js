@@ -10,6 +10,12 @@ export class Sequencer {
     this.stepInterval = null
     this.currentTextBorders = []
     this.triggeredElements = []
+    // Tracks the active glow-removal timeout per element so a re-trigger can
+    // cancel the previous one before scheduling a fresh removal.
+    this._glowTimeouts = new Map()
+    // Incremented on every stop()/play() so any in-flight requestAnimationFrame
+    // callbacks from a previous play session know they are stale and must abort.
+    this._glowGeneration = 0
     // Pending refresh applied area-by-area at the start of each new cycle
     this.pendingRefresh = null
     this._pendingRefreshApplied = 0
@@ -232,13 +238,31 @@ export class Sequencer {
           // Apply the glow at the very start of the next paint frame so the
           // class change is committed to the frame that's about to be drawn,
           // giving the browser maximum time to render before the audio fires.
+          const capturedGen = this._glowGeneration
           requestAnimationFrame(() => {
+            // If stop() was called while this frame was queued, abort — otherwise
+            // we'd re-add 'triggered' to elements that stop() already cleaned up,
+            // causing the glow to appear stuck after the sequencer has stopped.
+            if (this._glowGeneration !== capturedGen) return
+
             segmentsToFlash.forEach(el => {
-              if (el) {
-                el.classList.add('triggered')
-                this.triggeredElements.push(el)
-                setTimeout(() => { el.classList.remove('triggered') }, glowDuration)
-              }
+              // Skip detached elements (e.g. page re-rendered, selection removed)
+              // — classList changes on disconnected nodes have no visual effect.
+              if (!el || !el.isConnected) return
+
+              // Cancel any in-flight removal so a fast re-trigger doesn't
+              // kill its own glow before the new glowDuration expires.
+              const prev = this._glowTimeouts.get(el)
+              if (prev !== undefined) clearTimeout(prev)
+
+              el.classList.add('triggered')
+              this.triggeredElements.push(el)
+
+              const tid = setTimeout(() => {
+                el.classList.remove('triggered')
+                this._glowTimeouts.delete(el)
+              }, glowDuration)
+              this._glowTimeouts.set(el, tid)
             })
           })
 
@@ -274,6 +298,7 @@ export class Sequencer {
 
   stop() {
     this.isPlaying = false
+    this._glowGeneration++   // invalidate any rAF callbacks still pending from playStep
     this.currentStep = 0
     this.areaSteps = this.areaSteps.map(() => 0)
     this.pendingRefresh = null
@@ -292,7 +317,9 @@ export class Sequencer {
     })
     this.currentTextBorders = []
 
-    // Remove any lingering glow classes
+    // Remove any lingering glow classes and cancel pending removal timers
+    this._glowTimeouts.forEach((tid) => clearTimeout(tid))
+    this._glowTimeouts.clear()
     this.triggeredElements.forEach(el => {
       if (el) el.classList.remove('triggered')
     })

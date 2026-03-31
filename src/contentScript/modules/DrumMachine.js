@@ -18,7 +18,7 @@ export class DrumMachine {
     this.areaSelector = new AreaSelector(
       (areaData) => this.onAreaSelected(areaData),
       (areaData) => {
-        this.textHighlighter.clearHighlights()
+        this.textHighlighter.clearHighlightsInArea(areaData)
         this.extractAllTextElements()
         this.broadcastState()
       }
@@ -199,6 +199,7 @@ export class DrumMachine {
   getState() {
     return {
       isPlaying: this.sequencer.getIsPlaying(),
+      isSelecting: this.areaSelector.isSelecting,
       bpm: this.sequencer.getBPM(),
       speed: this.sequencer.getSpeedMultiplier(),
       outputMode: this.audioEngine.getMode(),
