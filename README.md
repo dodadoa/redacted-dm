@@ -22,7 +22,7 @@ FEATURES:
 - Remote mode: streams live OSC messages over WebSocket to your local machine — connect to Max/MSP, SuperCollider, TouchDesigner, Ableton, or any software that listens on UDP
 
 # Privacy statement
-webpage x-ray does not collect, store, or transmit any user data. All analysis is performed locally in the browser and no information leaves your device.
+Self-Censored Step Sequencer does not collect, store, or transmit any user data. All analysis is performed locally in the browser and no information leaves your device.
 
 ---
 
