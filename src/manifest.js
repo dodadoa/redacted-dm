@@ -6,7 +6,7 @@ const isDev = process.env.NODE_ENV == 'development'
 export default defineManifest({
 name: `Self-censored Step Sequencer`,
   description: `A step sequencer that turns redacted text into rhythm. In the age of blacked-out documents, what you cannot say becomes the beat.`,
-  version: "0.1.0",
+  version: "0.1.1",
   manifest_version: 3,
   icons: {
     16: 'img/logo-16.png',
